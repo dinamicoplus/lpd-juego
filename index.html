@@ -147,7 +147,7 @@ footer { padding: 0 18px 24px; color: var(--muted); font-size: 12px; max-width: 
         <legend class="s">Enlace (igual en los dos móviles)</legend>
         <div class="row2">
           <div class="ctl"><label for="rKey">Clave</label><input id="rKey" type="text" value="TFG" autocomplete="off"></div>
-          <div class="ctl"><label for="rBand">Banda</label><select id="rBand"><option value="b26">2–6 kHz</option><option value="b812">8–12 kHz</option><option value="b054">0,5–4 kHz</option></select></div>
+          <div class="ctl"><label for="rBand">Banda</label><select id="rBand"><option value="b26">2–6 kHz</option><option value="b812">8–12 kHz</option><option value="b054">0,5–4 kHz</option><option value="full">Toda la banda (0,2–20 kHz)</option></select></div>
         </div>
         <div class="ctl"><label for="rSF">Ensanchado SF</label><select id="rSF"><option value="2">2 · rápido</option><option value="4">4</option><option value="8" selected>8</option><option value="16">16</option><option value="32">32 · más bajo el ruido</option></select><small id="rPlanTxt"></small></div>
       </fieldset>
@@ -361,6 +361,7 @@ const BANDS_A = {
   b26: { f1: 2000, f2: 6000, name: "2–6 kHz" },
   b812: { f1: 8000, f2: 12000, name: "8–12 kHz" },
   b054: { f1: 500, f2: 4000, name: "0,5–4 kHz" },
+  full: { f1: 200, f2: 20000, name: "Toda la banda (0,2–20 kHz)" },
   mimic: { f1: 60, f2: 23900, shaped: true, name: "Imitar el fondo (todo el espectro, con su color)" },
 };
 const BANDS_W = {
@@ -933,8 +934,15 @@ class ModemPlan {
     this.B = Math.floor(this.nb / this.SF);                    // bits por simbolo
     this.band = band; this.key = key; this.bandKey = bandKey;
     const rng = mulberry32(hashStr("modem:" + key + ":" + bandKey + ":" + SF));
-    this.perm = new Uint16Array(this.nb); for (let i = 0; i < this.nb; i++) this.perm[i] = i;
-    for (let i = this.nb - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); const t = this.perm[i]; this.perm[i] = this.perm[j]; this.perm[j] = t; }
+    // copia s del bit j -> portadora del bloque s (la banda partida en SF bloques), en orden con clave
+    // dentro del bloque: las SF copias de cada bit quedan repartidas por toda la banda (diversidad)
+    this.perm = new Uint16Array(this.nb);
+    for (let i = 0; i < this.nb; i++) this.perm[i] = i;
+    for (let b = 0; b < this.SF; b++) {
+      const o = new Uint16Array(this.B); for (let i = 0; i < this.B; i++) o[i] = i;
+      for (let i = this.B - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); const t = o[i]; o[i] = o[j]; o[j] = t; }
+      for (let j = 0; j < this.B; j++) this.perm[j * this.SF + b] = b * this.B + o[j];
+    }
     this.phi0 = new Float64Array(this.nb); for (let i = 0; i < this.nb; i++) this.phi0[i] = 2 * Math.PI * rng();
     this.th = []; for (let m = 0; m <= RM.MAXSYM + 1; m++) { const a = new Float64Array(this.nb); for (let i = 0; i < this.nb; i++) a[i] = 2 * Math.PI * rng(); this.th.push(a); }
     this.fill = []; for (let m = 0; m <= RM.MAXSYM + 1; m++) { const a = new Uint8Array(this.nb); for (let i = 0; i < this.nb; i++) a[i] = rng() < 0.5 ? 1 : 0; this.fill.push(a); }
