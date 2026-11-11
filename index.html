@@ -1,0 +1,1859 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Juego LPD 2D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Mesa de juego: mapa en el centro, el vigia (Willie) con un instrumento por tecnica a la derecha,
+   mandos a la izquierda. Alice = azul, Bob = verde, Willie = rojo en todo el juego. */
+:root {
+  --bg: #f3f6f8; --panel: #ffffff; --ink: #15222c; --muted: #5b6c79; --line: #d8e0e6;
+  --alice: #1f6fb2; --bob: #1b8a5a; --willie: #c2413a; --warn: #a8670f; --tint: #eef3f7;
+  --grid: #e6ecf0; --map: #fbfcfd;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d141a; --panel: #141e26; --ink: #e4ebf0; --muted: #94a5b2; --line: #263540;
+    --alice: #5aa9e6; --bob: #42c08a; --willie: #f06a5e; --warn: #e0a54a; --tint: #18242e;
+    --grid: #1c2933; --map: #10191f; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font-body); }
+header { padding: 14px 18px 4px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+h1 { font-size: 19px; font-weight: 600; margin: 0; }
+.intro { margin: 0; padding: 0 18px; color: var(--muted); font-size: 13px; max-width: 110ch; }
+@media (max-width: 820px) { .intro { padding: 0 10px; } }
+.transport { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-left: auto; }
+.clock { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); min-width: 7ch; text-align: right; }
+main { display: grid; gap: 14px; padding: 10px 18px 28px; grid-template-columns: 290px minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "ctl map det"; align-items: start; }
+@media (max-width: 1280px) { main { grid-template-columns: 290px minmax(0, 1fr); grid-template-areas: "ctl map" "ctl det"; } }
+@media (max-width: 820px) { main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "map" "det" "ctl"; padding: 8px 10px 24px; } header { padding: 12px 10px 2px; } }
+#ctl { grid-area: ctl; } #mapcol { grid-area: map; } #det { grid-area: det; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+.stack { display: grid; gap: 12px; min-width: 0; }
+.card h2 { font-size: 13.5px; font-weight: 600; margin: 0 0 6px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.card h2 span { font-weight: 400; color: var(--muted); font-size: 12px; }
+.card h2 span.tb, .card h2 span.tw { font-weight: 600; font-size: 13.5px; }
+.card h2 span.tb { color: var(--bob); } .card h2 span.tw { color: var(--willie); }
+.card.ca { border-top: 3px solid var(--alice); } .card.cw { border-top: 3px solid var(--willie); } .card.cb { border-top: 3px solid var(--bob); }
+fieldset { border: 0; border-top: 1px solid var(--line); margin: 8px 0 0; padding: 8px 0 0; display: grid; gap: 8px; }
+fieldset:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
+legend { font-weight: 600; font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; padding: 0; }
+legend.a { color: var(--alice); } legend.w { color: var(--willie); } legend.s { color: var(--muted); }
+.ctl { display: grid; gap: 2px; }
+.ctl label { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.ctl output, .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; white-space: nowrap; }
+.ctl small, .hint { color: var(--muted); font-size: 12px; }
+input[type=range] { width: 100%; accent-color: var(--alice); }
+.wset input[type=range] { accent-color: var(--willie); }
+select { width: 100%; font: inherit; font-size: 13px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+.check { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+button { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button[aria-pressed=true] { background: var(--tint); border-color: var(--muted); font-weight: 600; }
+#emit { width: 100%; padding: 10px; font-weight: 600; font-size: 14px; border-color: var(--alice); color: var(--alice); }
+#emit.on { background: var(--alice); color: #fff; }
+#emit2 { border-color: var(--alice); color: var(--alice); font-weight: 600; }
+#emit2.on { background: var(--alice); color: #fff; }
+:focus-visible { outline: 2px solid var(--alice); outline-offset: 2px; }
+#map { width: 100%; aspect-ratio: 1 / 1; display: block; touch-action: none; border-radius: 6px; cursor: grab; }
+.maplegend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.sw { display: inline-block; width: 18px; height: 0; border-top: 2px dashed currentColor; vertical-align: 3px; margin-right: 5px; }
+.status { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.tile { border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; border-top: 3px solid var(--line); display: grid; gap: 2px; }
+.tile.bob { border-top-color: var(--bob); } .tile.wil { border-top-color: var(--willie); }
+.tile .k { font-size: 12px; color: var(--muted); }
+.tile .v { font-family: var(--font-mono); font-size: 16px; font-variant-numeric: tabular-nums; }
+.tile .d { font-size: 12px; color: var(--muted); }
+.pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 0 7px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.pill.ok { color: var(--bob); } .pill.bad { color: #fff; background: var(--willie); border-color: var(--willie); }
+.pill.neutral { color: var(--muted); } .pill.warn { color: var(--warn); }
+.strip { display: grid; gap: 3px; padding: 7px 0; border-top: 1px solid var(--line); }
+.strip:first-of-type { border-top: 0; padding-top: 0; }
+.strip .hd { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 13px; }
+.strip .hd b { font-weight: 600; }
+.strip .meta { font-size: 12px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }
+.strip canvas { width: 100%; height: 54px; display: block; }
+.strip.off { opacity: .45; }
+#spec { width: 100%; height: 90px; display: block; }
+.score { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+.score b { color: var(--ink); font-family: var(--font-mono); font-weight: 500; }
+.presets { display: grid; gap: 6px; }
+.presets button { text-align: left; }
+#presetNote { font-size: 12.5px; color: var(--ink); background: var(--tint); border-radius: 6px; padding: 7px 9px; display: none; }
+.detset { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; }
+.detset .ctl { grid-column: 2; }
+body.real .sim { display: none !important; } body:not(.real) .real { display: none !important; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; }
+.seg button[aria-pressed=true] { background: var(--ink); color: var(--panel); }
+textarea, input[type=text] { width: 100%; font: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); resize: vertical; }
+.bigb { font-weight: 600; padding: 9px 10px; border-color: var(--bob); color: var(--bob); }
+#listen.on { background: var(--bob); color: #fff; }
+#rAdd { border-color: var(--alice); color: var(--alice); }
+.msgs { display: grid; gap: 8px; margin-top: 8px; max-height: 420px; overflow-y: auto; }
+.msg { border: 1px solid var(--line); border-left: 3px solid var(--bob); border-radius: 6px; padding: 7px 9px; }
+.msg .tx { font-size: 15px; white-space: pre-wrap; word-break: break-word; }
+.msg .mt { font-size: 12px; color: var(--muted); }
+.msg.part { border-left-color: var(--warn); }
+.queue { display: grid; gap: 5px; }
+.qi { font-size: 12.5px; border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; display: flex; justify-content: space-between; gap: 8px; }
+.qi span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qi.sending { border-color: var(--alice); color: var(--alice); }
+.qi.sent { color: var(--muted); }
+footer { padding: 0 18px 24px; color: var(--muted); font-size: 12px; max-width: 110ch; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Juego LPD 2D</h1>
+  <div class="seg" role="group" aria-label="Modo">
+    <button id="mSim" type="button" aria-pressed="true">Simulación</button>
+    <button id="mReal" type="button" aria-pressed="false">Altavoz y micrófono</button>
+  </div>
+  <div class="transport">
+    <button id="emit2" class="sim" type="button">Emitir</button>
+    <button id="play" class="sim" type="button" aria-pressed="false">Pausa</button>
+    <button id="restart" class="sim" type="button">Reiniciar</button>
+    <select id="speed" class="sim" aria-label="Velocidad" style="width:auto"><option value="1">×1</option><option value="2">×2</option><option value="4">×4</option></select>
+    <select id="audio" class="sim" aria-label="Escuchar" style="width:auto"><option value="off">Audio: no</option><option value="W">Oír a Willie</option><option value="B">Oír a Bob</option></select>
+    <span class="clock" id="clock">0,0 s</span>
+    <span id="audioState" class="pill warn" style="display:none"></span>
+  </div>
+</header>
+<p class="intro real">Modo real: este móvil emite por el altavoz los mensajes de la cola y, si pulsas Escuchar, analiza lo que capta el micrófono. Bob busca el preámbulo, decodifica y comprueba el CRC; Willie pasa sus cinco detectores sobre el micrófono. Los dos móviles deben tener la misma clave, banda y SF.</p>
+<p class="intro sim">Arrastra a Alice, Bob y Willie por el mapa. La señal se genera muestra a muestra (48 000 por segundo) y cada técnica del vigía tiene su propio detector con alarma. Willie se calibra durante los 10 primeros segundos con lo que oye.</p>
+<main>
+  <section id="mapcol" class="stack">
+    <div class="card cb real">
+      <h2><span class="tb">Receptor (Bob con el micrófono)</span> <span id="rxInfo"></span></h2>
+      <div class="row2" style="align-items:center">
+        <button id="listen" type="button" class="bigb">Escuchar</button>
+        <span class="hint" id="rxState">Micrófono apagado</span>
+      </div>
+      <div class="score" id="rxStats"></div>
+      <div id="rxMsgs" class="msgs" aria-live="polite"><p class="hint">Aquí aparecerán los mensajes recibidos.</p></div>
+    </div>
+    <div class="card real">
+      <fieldset>
+        <legend class="s">Enlace (igual en los dos móviles)</legend>
+        <div class="row2">
+          <div class="ctl"><label for="rKey">Clave</label><input id="rKey" type="text" value="TFG" autocomplete="off"></div>
+          <div class="ctl"><label for="rBand">Banda</label><select id="rBand"><option value="b26">2–6 kHz</option><option value="b812">8–12 kHz</option><option value="b054">0,5–4 kHz</option></select></div>
+        </div>
+        <div class="ctl"><label for="rSF">Ensanchado SF</label><select id="rSF"><option value="2">2 · rápido</option><option value="4">4</option><option value="8" selected>8</option><option value="16">16</option><option value="32">32 · más bajo el ruido</option></select><small id="rPlanTxt"></small></div>
+      </fieldset>
+    </div>
+    <div class="card ca real">
+      <fieldset>
+        <legend class="a">Emisor (altavoz)</legend>
+        <div class="ctl"><label for="rText">Mensaje</label><textarea id="rText" rows="3" maxlength="600" placeholder="Escribe un mensaje…"></textarea></div>
+        <div class="row2"><button id="rAdd" type="button" class="bigb">Añadir a la cola</button><button id="rClear" type="button">Vaciar cola</button></div>
+        <div class="ctl"><label for="rVol">Volumen <output id="rVolO">80 %</output></label><input id="rVol" type="range" min="0.05" max="1" step="0.05" value="0.8"></div>
+        <div class="ctl"><label for="rRep">Enviar cada paquete</label><select id="rRep"><option value="1">1 vez</option><option value="2" selected>2 veces</option><option value="3">3 veces</option></select></div>
+        <div id="rQueue" class="queue"><p class="hint">Cola vacía.</p></div>
+      </fieldset>
+    </div>
+    <div class="card sim">
+      <h2>Mapa <span id="scaleTxt">2 km × 2 km</span></h2>
+      <canvas id="map" aria-label="Mapa con Alice, Bob y Willie; se pueden arrastrar"></canvas>
+      <div class="maplegend">
+        <span style="color:var(--bob)"><i class="sw"></i>Bob recibe dentro (BER &lt; 1 %)</span>
+        <span style="color:var(--willie)"><i class="sw"></i>Willie detecta dentro (energía, P<sub>D</sub> = 0,5)</span>
+      </div>
+      <div class="status">
+        <div class="tile bob"><span class="k">Bob</span><span class="v" id="bobV">—</span><span class="d" id="bobD">—</span></div>
+        <div class="tile wil"><span class="k">Willie</span><span class="v" id="wilV">—</span><span class="d" id="wilD">—</span></div>
+      </div>
+      <div class="score" id="score"></div>
+    </div>
+    <div class="card">
+      <h2>Lo que oye Willie <span>espectro medio, dB</span></h2>
+      <canvas id="spec" aria-label="Espectro recibido por Willie"></canvas>
+      <div class="maplegend">
+        <span><i class="sw" style="border-top-style:solid;color:var(--ink)"></i>recibido</span>
+        <span style="color:var(--willie)">▮ banda vigilada</span>
+        <span style="color:var(--alice)">▮ banda de Alice</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="det" class="stack">
+    <div class="card cb">
+      <h2><span class="tb">Recepción de Bob</span> <span>últimos 40 s · banda azul abajo = Alice emitiendo</span></h2>
+      <div id="stripsB" class="sim"></div>
+      <div id="stripsR" class="real"></div>
+    </div>
+    <div class="card cw">
+      <h2><span class="tw">Detectores de Willie</span> <span>un instrumento por técnica · sombreado = alarma</span></h2>
+      <div id="stripsW"></div>
+    </div>
+  </section>
+
+  <aside id="ctl" class="stack">
+    <div class="card ca sim">
+      <fieldset>
+        <legend class="a">Alice (emisor)</legend>
+        <button id="emit" type="button">Emitir</button>
+        <div class="ctl"><label for="mode">Modulación</label><select id="mode" data-k="acfg.mode"></select></div>
+        <div class="ctl"><label for="band">Banda</label><select id="band" data-k="acfg.band"></select></div>
+        <div class="ctl"><label for="Ptx">Potencia a 1 m <output id="PtxO"></output></label><input id="Ptx" type="range" min="20" max="100" step="1" data-k="acfg.PtxDb" data-f="dB"></div>
+        <div class="ctl" id="sfRow"><label for="SF">Ensanchado SF <output id="SFO"></output></label><select id="SF" data-k="acfg.SF" data-num></select><small id="sfHint"></small></div>
+        <div class="ctl"><label for="ramp">Rampa al encender/apagar <output id="rampO"></output></label><input id="ramp" type="range" min="0" max="120" step="1" data-k="acfg.ramp" data-f="s"></div>
+        <label class="check"><input id="startOn" type="checkbox" data-k="acfg.startOn"> Emitir ya desde el inicio (antes de que Willie calibre)</label>
+      </fieldset>
+    </div>
+    <div class="card cw">
+      <fieldset class="wset">
+        <legend class="w">Willie (vigía): estrategias</legend>
+        <div class="ctl"><label for="wband">Banda vigilada</label><select id="wband" data-k="wcfg.band" data-w></select></div>
+        <div class="ctl"><label for="W">Ventana de integración W <output id="WO"></output></label><input id="W" type="range" min="1" max="20" step="0.5" data-k="wcfg.W" data-f="s" data-w></div>
+        <div class="row2">
+          <div class="ctl"><label for="pfa"><span>P<sub>FA</sub></span></label><select id="pfa" data-k="wcfg.pfa" data-num data-w><option value="0.01">1e-2</option><option value="0.001">1e-3</option><option value="0.0001">1e-4</option></select></div>
+          <div class="ctl"><label for="rule">Regla</label><select id="rule" data-k="wcfg.rule" data-w><option value="hyst">Histéresis 3/10</option><option value="kofn">5 de 10</option></select></div>
+        </div>
+        <div class="detset" id="detset"></div>
+        <button id="recal" type="button">Recalibrar (10 s)</button>
+      </fieldset>
+    </div>
+    <div class="card sim">
+      <fieldset>
+        <legend class="s">Escena</legend>
+        <div class="row2">
+          <div class="ctl"><label for="side">Mapa</label><select id="side" data-k="scene.side" data-num><option value="500">500 m</option><option value="2000">2 km</option><option value="10000">10 km</option><option value="50000">50 km</option></select></div>
+          <div class="ctl"><label for="k">Pérdidas</label><select id="k" data-k="scene.k" data-num><option value="2">esféricas (k = 2)</option><option value="1.5">prácticas (k = 1,5)</option><option value="1">cilíndricas (k = 1)</option></select></div>
+        </div>
+        <div class="ctl"><label for="varDb">Variación del nivel del fondo <output id="varDbO"></output></label><input id="varDb" type="range" min="0" max="3" step="0.1" data-k="scene.varDb" data-f="±dB"></div>
+        <div class="ctl"><label for="colorDb">Variación del color del fondo <output id="colorDbO"></output></label><input id="colorDb" type="range" min="0" max="2" step="0.05" data-k="scene.colorDb" data-f="±dB"><small>El fondo es blanco más una componente grave (paso bajo de 1,5 kHz) cuyo nivel varía por su cuenta.</small></div>
+      </fieldset>
+    </div>
+    <div class="card sim">
+      <fieldset>
+        <legend class="s">Escenarios guiados</legend>
+        <div class="presets" id="presets"></div>
+        <div id="presetNote"></div>
+      </fieldset>
+    </div>
+  </aside>
+</main>
+<footer>
+  <span class="real">Módem real: preámbulo y postámbulo de ruido con clave (4096 muestras) para el sincronismo y la deriva del reloj; OFDM N = 1024, CP = 128, dos símbolos de referencia y BPSK coherente con fases con clave; cada bit en SF portadoras; cabecera y CRC-16. Captura sin cancelación de eco, sin supresión de ruido y sin control automático de ganancia. </span>
+  Modelo: pérdidas 10·k·log<sub>10</sub>(d), sin multitrayecto, sin retardo de propagación ni Doppler. Potencia de Alice en dB respecto al ruido blanco de referencia (varianza 1) a 1 m. OFDM: N = 1024, prefijo/guarda de 128 (periodo 1152). Willie conoce la numerología (N y periodo) pero no la clave. Bob conoce la clave, la banda y la temporización. Los anillos son analíticos con el fondo nominal; el juego en vivo usa el fondo variable.
+</footer>
+<script>
+// ---------- numerica ----------
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hashStr(s) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h;
+}
+function gaussGen(rng) {
+  let spare = null;
+  return function () {
+    if (spare !== null) { const v = spare; spare = null; return v; }
+    let u = 0, v = 0;
+    while (u === 0) u = rng();
+    v = rng();
+    const r = Math.sqrt(-2 * Math.log(u)), th = 2 * Math.PI * v;
+    spare = r * Math.sin(th);
+    return r * Math.cos(th);
+  };
+}
+// Q(x) y su inversa
+function erfc(x) {
+  const z = Math.abs(x), t = 1 / (1 + 0.5 * z);
+  const r = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 +
+    t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
+  return x >= 0 ? r : 2 - r;
+}
+function Q(x) { return 0.5 * erfc(x / Math.SQRT2); }
+function Qinv(p) { // inversa de Q: Q(Qinv(p)) = p  (Acklam)
+  p = Math.min(Math.max(p, 1e-15), 1 - 1e-15);
+  const q = 1 - p; // cuantil normal de q
+  const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+  const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01];
+  const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+  const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
+  let x;
+  if (q < 0.02425) {
+    const r = Math.sqrt(-2 * Math.log(q));
+    x = (((((c[0] * r + c[1]) * r + c[2]) * r + c[3]) * r + c[4]) * r + c[5]) / ((((d[0] * r + d[1]) * r + d[2]) * r + d[3]) * r + 1);
+  } else if (q > 1 - 0.02425) {
+    const r = Math.sqrt(-2 * Math.log(1 - q));
+    x = -(((((c[0] * r + c[1]) * r + c[2]) * r + c[3]) * r + c[4]) * r + c[5]) / ((((d[0] * r + d[1]) * r + d[2]) * r + d[3]) * r + 1);
+  } else {
+    const r = q - 0.5, s = r * r;
+    x = (((((a[0] * s + a[1]) * s + a[2]) * s + a[3]) * s + a[4]) * s + a[5]) * r / (((((b[0] * s + b[1]) * s + b[2]) * s + b[3]) * s + b[4]) * s + 1);
+  }
+  return x;
+}
+const nextPow2 = (n) => { let m = 1; while (m < n) m <<= 1; return m; };
+const db = (x) => 10 * Math.log10(x);
+const lin = (x) => Math.pow(10, x / 10);
+
+// FFT compleja in situ (radix 2). inverse=true no divide por n.
+function fft(re, im, inverse) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = (inverse ? 2 : -2) * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang), h = len >> 1;
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let j = 0; j < h; j++) {
+        const ar = re[i + j + h], ai = im[i + j + h];
+        const xr = ar * cr - ai * ci, xi = ar * ci + ai * cr;
+        re[i + j + h] = re[i + j] - xr; im[i + j + h] = im[i + j] - xi;
+        re[i + j] += xr; im[i + j] += xi;
+        const ncr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = ncr;
+      }
+    }
+  }
+}
+// senal real a partir de portadoras (indices k, valores complejos), longitud n
+function realFromBins(n, ks, xr, xi) {
+  const re = new Float64Array(n), im = new Float64Array(n);
+  for (let j = 0; j < ks.length; j++) {
+    const k = ks[j];
+    re[k] = xr[j]; im[k] = xi[j];
+    re[n - k] = xr[j]; im[n - k] = -xi[j];
+  }
+  fft(re, im, true);
+  for (let i = 0; i < n; i++) re[i] /= n;
+  return re;
+}
+
+// ============================================================================
+// Motor del juego LPD 2D en tiempo real. Sin DOM: se prueba con node.
+// Trama de 4096 muestras a 48 kHz (85 ms). Ruido de fondo blanco de varianza
+// rho(t) por muestra (nominal 1). Potencia de Alice: referida a 1 m y al ruido
+// total nominal (0-24 kHz). Canal: perdidas 10 k log10(d), sin multitrayecto,
+// sin retardo ni Doppler.
+// ============================================================================
+const FS = 48000, FRAME = 4096, NSYM = 1024, GCP = 128, PER = NSYM + GCP, MW = 8192;
+const TCAL = 10;                 // s de calibracion de Willie
+const FOLD_BINS = 144;           // perfil de plegado: 1152 / 8 muestras por casilla
+const FOLD_OFF = [0.97, 1.03, 0.95, 1.05, 0.93, 1.07, 0.89, 1.11];
+
+const BANDS_A = {
+  b26: { f1: 2000, f2: 6000, name: "2–6 kHz" },
+  b812: { f1: 8000, f2: 12000, name: "8–12 kHz" },
+  b054: { f1: 500, f2: 4000, name: "0,5–4 kHz" },
+  mimic: { f1: 60, f2: 23900, shaped: true, name: "Imitar el fondo (todo el espectro, con su color)" },
+};
+const BANDS_W = {
+  b26: { f1: 2000, f2: 6000, name: "2–6 kHz" },
+  b812: { f1: 8000, f2: 12000, name: "8–12 kHz" },
+  b054: { f1: 500, f2: 4000, name: "0,5–4 kHz" },
+  all: { f1: 300, f2: 20000, name: "Todo (0,3–20 kHz)" },
+};
+const MODES = {
+  cp: "CP-OFDM (QPSK)",
+  zp: "ZP-OFDM (QPSK)",
+  spread: "OFDM ensanchado con clave",
+  gauss: "Ruido con clave (gaussiano)",
+};
+const DET = {
+  energy: "Energía",
+  change: "Cambio de potencia",
+  contrast: "Contraste espectral",
+  cp: "Correlación del CP",
+  fold: "Plegado (ritmo de símbolo)",
+};
+// S/R en banda necesaria en Bob para BER = 1e-2
+const QX = 2.3263478740408408; // Q^-1(1e-2)
+function snrReq(mode, SF) {
+  const x2 = QX * QX; // 5,41
+  if (mode === "cp") return x2;
+  if (mode === "zp") return x2 * NSYM / PER;
+  if (mode === "spread") return x2 / 2 / SF;
+  return x2 / SF; // gauss: BER = Q(sqrt(SNR*SF))
+}
+function bandBinsF(f1, f2, M) {
+  return [Math.max(1, Math.ceil(f1 * M / FS)), Math.min(M / 2 - 1, Math.floor(f2 * M / FS))];
+}
+function overlap(a, b) { return Math.max(0, Math.min(a.f2, b.f2) - Math.max(a.f1, b.f1)); }
+// Fondo = blanco (varianza 1) + paso bajo de un polo (fc 1,5 kHz, varianza c0 = 1). Densidad relativa al blanco:
+const LP_A = Math.exp(-2 * Math.PI * 1500 / FS), LP_B = Math.sqrt(1 - LP_A * LP_A);
+function Slp(f) { const w = 2 * Math.PI * f / FS; return (1 - LP_A * LP_A) / (1 - 2 * LP_A * Math.cos(w) + LP_A * LP_A); }
+function Sbg(f, c) { return 1 + (c === undefined ? 1 : c) * Slp(f); }
+// potencia del fondo nominal (rho = 1, c = 1) en la banda [f1, f2], ambas caras
+function noiseIn(f1, f2, c) {
+  const n = 400, df = (f2 - f1) / n; let s = 0;
+  for (let i = 0; i < n; i++) s += Sbg(f1 + (i + 0.5) * df, c);
+  return 2 * s * df / FS;
+}
+// eficiencia del correlador de Bob cuando ruido y senal no son planos en la banda
+function etaBand(b) {
+  const n = 400, df = (b.f2 - b.f1) / n; let s1 = 0, s2 = 0, n1 = 0, x = 0;
+  for (let i = 0; i < n; i++) {
+    const f = b.f1 + (i + 0.5) * df, S = b.shaped ? Sbg(f) : 1, N = Sbg(f);
+    s1 += S; s2 += S * N; n1 += N;
+  }
+  // SNR del correlador / SNR media en banda = (sum S)^2 / (sum S N) / (sum S / sum N)
+  return s1 * n1 / (s2 * n);
+}
+
+// ---------- Alice ----------
+class ChipStream { // ruido gaussiano de banda limitada y varianza 1, continuo (OLA con ventana seno)
+  constructor(rng, band) {
+    this.g = gaussGen(rng); this.band = band;
+    const [k1, k2] = bandBinsF(band.f1, band.f2, MW);
+    this.ks = []; this.wk = [];
+    let sw = 0;
+    for (let k = k1; k <= k2; k++) { const w = band.shaped ? Math.sqrt(Sbg(k * FS / MW)) : 1; this.ks.push(k); this.wk.push(w); sw += w * w; }
+    this.scale = MW / Math.sqrt(4 * sw);
+    this.win = new Float64Array(MW); for (let i = 0; i < MW; i++) this.win[i] = Math.sin(Math.PI * (i + 0.5) / MW);
+    this.prev = this.block(); this.buf = new Float64Array(0); this.pos = 0;
+  }
+  block() {
+    const nk = this.ks.length, xr = new Float64Array(nk), xi = new Float64Array(nk);
+    for (let j = 0; j < nk; j++) { xr[j] = this.wk[j] * this.g(); xi[j] = this.wk[j] * this.g(); }
+    const x = realFromBins(MW, this.ks, xr, xi);
+    for (let i = 0; i < MW; i++) x[i] *= this.scale * this.win[i];
+    return x;
+  }
+  hop() {
+    const cur = this.block(), h = MW / 2, out = new Float64Array(h);
+    for (let i = 0; i < h; i++) out[i] = this.prev[i + h] + cur[i];
+    this.prev = cur; return out;
+  }
+  pull(n) {
+    const out = new Float64Array(n); let o = 0;
+    while (o < n) {
+      if (this.pos >= this.buf.length) { this.buf = this.hop(); this.pos = 0; }
+      const m = Math.min(n - o, this.buf.length - this.pos);
+      out.set(this.buf.subarray(this.pos, this.pos + m), o); o += m; this.pos += m;
+    }
+    return out;
+  }
+}
+
+class Alice {
+  constructor(seed) {
+    this.rng = mulberry32(seed); this.g = gaussGen(this.rng);
+    this.q = []; this.qn = 0; this.qoff = 0;   // cola de trozos generados
+    this.gen = 0;                              // indice global de la siguiente muestra a generar
+    this.log = [];                             // simbolos emitidos (para Bob)
+    this.p = 0;                                // envolvente de potencia (0..1)
+    this.chips = null;
+  }
+  symbol(c) {
+    const band = BANDS_A[c.band], mode = c.mode;
+    if (mode === "gauss") return this.gaussBlock(c, band);
+    const [k1, k2] = bandBinsF(band.f1, band.f2, NSYM), nb = k2 - k1 + 1;
+    const ks = [], wk = new Float64Array(nb); let sw = 0;
+    for (let k = k1; k <= k2; k++) { const w = band.shaped ? Math.sqrt(Sbg(k * FS / NSYM)) : 1; wk[k - k1] = w; sw += w * w; ks.push(k); }
+    const xr = new Float64Array(nb), xi = new Float64Array(nb);
+    if (mode === "cp" || mode === "zp") {
+      const sr = new Int8Array(nb), si = new Int8Array(nb);
+      for (let j = 0; j < nb; j++) {
+        sr[j] = this.rng() < 0.5 ? 1 : -1; si[j] = this.rng() < 0.5 ? 1 : -1;
+        xr[j] = wk[j] * sr[j]; xi[j] = wk[j] * si[j];
+      }
+      const x = realFromBins(NSYM, ks, xr, xi), u = new Float64Array(PER);
+      if (mode === "cp") {
+        const c0 = NSYM / Math.sqrt(4 * sw);           // |X|^2 = 2 w^2 por portadora
+        for (let t = 0; t < GCP; t++) u[t] = c0 * x[NSYM - GCP + t];
+        for (let t = 0; t < NSYM; t++) u[GCP + t] = c0 * x[t];
+      } else {
+        const c0 = NSYM / Math.sqrt(4 * sw * NSYM / PER);
+        for (let t = 0; t < NSYM; t++) u[t] = c0 * x[t];
+      }
+      return { u, e: { mode, L: PER, off: mode === "cp" ? GCP : 0, k1, nb, sr, si } };
+    }
+    // ensanchado: cada bit en SF portadoras elegidas con la clave, fases con clave
+    const SF = Math.min(c.SF, nb), nbits = Math.floor(nb / SF);
+    const perm = new Uint16Array(nb); for (let i = 0; i < nb; i++) perm[i] = i;
+    for (let i = nb - 1; i > 0; i--) { const j = Math.floor(this.rng() * (i + 1)); const t = perm[i]; perm[i] = perm[j]; perm[j] = t; }
+    const ph = new Float64Array(nb), sg = new Int8Array(nb), bits = new Int8Array(nbits);
+    for (let i = 0; i < nb; i++) { ph[i] = 2 * Math.PI * this.rng(); sg[i] = this.rng() < 0.5 ? 1 : -1; }
+    for (let b = 0; b < nbits; b++) { bits[b] = this.rng() < 0.5 ? 1 : -1; for (let s = 0; s < SF; s++) sg[perm[b * SF + s]] = bits[b]; }
+    for (let i = 0; i < nb; i++) { xr[i] = wk[i] * sg[i] * Math.cos(ph[i]); xi[i] = wk[i] * sg[i] * Math.sin(ph[i]); }
+    const x = realFromBins(NSYM, ks, xr, xi), c0 = NSYM / Math.sqrt(2 * sw), u = new Float64Array(NSYM);
+    for (let t = 0; t < NSYM; t++) u[t] = c0 * x[t];
+    return { u, e: { mode, L: NSYM, k1, nb, SF, perm, ph, bits } };
+  }
+  // Ruido con clave: cada bit = signo x tramo de ruido de banda limitada; la duracion de cada bit
+  // va con la clave (Lc +- 25 %) para que no haya ritmo de bit. La emision se filtra a la banda
+  // (ventana de 16384 centrada en el bloque: Alice genera 6144 muestras por delante).
+  gaussBlock(c, band) {
+    const LA = 6144, MF = 16384, t0 = this.gen;
+    const B = band.f2 - band.f1, Lc = Math.max(1, Math.round(c.SF * FS / (2 * B)));
+    let G = this.gs;
+    if (!G || G.band !== band || G.next !== t0) {
+      if (!this.chips || this.chips.band !== band) this.chips = new ChipStream(this.rng, band);
+      G = this.gs = { band, base: t0 - LA, U: new Float64Array(LA), C: new Float64Array(0), bits: [], end: t0, pw: 0, next: t0 };
+      const [k1, k2] = bandBinsF(band.f1, band.f2, MF); G.k1 = k1; G.k2 = k2;
+      G.re = new Float64Array(MF); G.im = new Float64Array(MF);
+    }
+    // generar por delante hasta cubrir t0 + 4096 + LA
+    const need = t0 + FRAME + LA;
+    if (G.end < need) {
+      const add = [], addC = [];
+      let len = 0;
+      while (G.end + len < need) {
+        const l = Lc >= 4 ? Lc + Math.floor((this.rng() - 0.5) * Lc / 2) : Lc;
+        const sg = this.rng() < 0.5 ? 1 : -1, ch = this.chips.pull(l);
+        G.bits.push({ t0: G.end + len, len: l, s: sg, ch });
+        const u = new Float64Array(l); for (let i = 0; i < l; i++) u[i] = sg * ch[i];
+        add.push(u); len += l;
+      }
+      const keep = Math.max(0, (t0 - LA) - G.base);
+      const old = G.U.subarray(keep), U = new Float64Array(old.length + len);
+      U.set(old); let o = old.length; for (const u of add) { U.set(u, o); o += u.length; }
+      G.U = U; G.base += keep; G.end += len;
+    }
+    // filtrar la ventana [t0 - LA, t0 + FRAME + LA)
+    const re = G.re, im = G.im; re.fill(0); im.fill(0);
+    for (let i = 0; i < MF; i++) { const j = t0 - LA + i - G.base; if (j >= 0 && j < G.U.length) re[i] = G.U[j]; }
+    fft(re, im, false);
+    for (let k = 0; k <= MF / 2; k++) if (k < G.k1 || k > G.k2) { re[k] = im[k] = 0; if (k > 0 && k < MF / 2) re[MF - k] = im[MF - k] = 0; }
+    fft(re, im, true);
+    const u = new Float64Array(FRAME); let p = 0;
+    for (let i = 0; i < FRAME; i++) { u[i] = re[LA + i] / MF; p += u[i] * u[i]; }
+    p /= FRAME;
+    G.pw = G.pw ? 0.92 * G.pw + 0.08 * p : p;          // normalizacion lenta (~1 s) a potencia unidad
+    const sc = 1 / Math.sqrt(G.pw);
+    for (let i = 0; i < FRAME; i++) u[i] *= sc;
+    // bits que terminan dentro de este bloque
+    const done = [];
+    while (G.bits.length && G.bits[0].t0 + G.bits[0].len <= t0 + FRAME) done.push(G.bits.shift());
+    G.next = t0 + FRAME;
+    return { u, e: { mode: "gauss", L: FRAME, list: done } };
+  }
+  // n muestras de forma de onda de potencia unidad y su envolvente de amplitud
+  produce(n, c) {
+    while (this.qn < n) {
+      const s = this.symbol(c); s.e.t0 = this.gen; this.gen += s.u.length;
+      this.q.push(s.u); this.qn += s.u.length; this.log.push(s.e);
+    }
+    const u = new Float64Array(n); let o = 0;
+    while (o < n) {
+      const head = this.q[0], m = Math.min(n - o, head.length - this.qoff);
+      u.set(head.subarray(this.qoff, this.qoff + m), o); o += m; this.qoff += m;
+      if (this.qoff >= head.length) { this.q.shift(); this.qoff = 0; }
+    }
+    this.qn -= n;
+    const env = new Float64Array(n), tgt = c.on ? 1 : 0, step = c.ramp > 0 ? 1 / (c.ramp * FS) : 1;
+    let p = this.p;
+    for (let i = 0; i < n; i++) {
+      if (p < tgt) p = Math.min(tgt, p + step); else if (p > tgt) p = Math.max(tgt, p - step);
+      env[i] = Math.sqrt(p);
+    }
+    this.p = p;
+    return { u, env };
+  }
+}
+
+// ---------- Bob ----------
+class Bob {
+  constructor() {
+    this.H = 1 << 16; this.y = new Float64Array(this.H); this.env = new Float64Array(this.H);
+    this.hist = []; // {t, err, n}
+    this.re = new Float64Array(NSYM); this.im = new Float64Array(NSYM);
+  }
+  // Bob conoce la banda de Alice: filtra a esa banda (solapamiento y descarte) antes de demodular
+  push(t0, y, env, band) {
+    if (!this.raw) { this.raw = new Float64Array(MW); this.fr = new Float64Array(MW); this.fi = new Float64Array(MW); }
+    const raw = this.raw, fr = this.fr, fi = this.fi, h = FRAME;
+    raw.copyWithin(0, h); raw.set(y, h);
+    fr.set(raw); fi.fill(0); fft(fr, fi, false);
+    const [k1, k2] = bandBinsF(band.f1, band.f2, MW);
+    for (let k = 0; k <= MW / 2; k++) if (k < k1 || k > k2) { fr[k] = fi[k] = 0; if (k > 0 && k < MW / 2) { fr[MW - k] = fi[MW - k] = 0; } }
+    fft(fr, fi, true);
+    const m = this.H - 1;
+    for (let i = 0; i < h; i++) { this.y[(t0 + i) & m] = fr[h + i] / MW; this.env[(t0 + i) & m] = env[i]; }
+  }
+  decode(log, tEnd, tsec) {
+    const m = this.H - 1; let err = 0, n = 0;
+    while (log.length && log[0].t0 + log[0].L <= tEnd) {
+      const e = log.shift();
+      const em = this.env[(e.t0 + (e.L >> 1)) & m];
+      if (em < 0.2) continue;                       // Alice callada: no hay bits que contar
+      if (e.mode === "gauss") {
+        for (const b of e.list) {
+          let z = 0;
+          for (let t = 0; t < b.len; t++) z += this.y[(b.t0 + t) & m] * b.ch[t];
+          if ((z >= 0 ? 1 : -1) !== b.s) err++; n++;
+        }
+        continue;
+      }
+      const re = this.re, im = this.im, o = e.t0 + (e.off || 0);
+      for (let t = 0; t < NSYM; t++) { re[t] = this.y[(o + t) & m]; im[t] = 0; }
+      fft(re, im, false);
+      if (e.mode === "spread") {
+        const nbits = e.bits.length;
+        for (let b = 0; b < nbits; b++) {
+          let z = 0;
+          for (let s = 0; s < e.SF; s++) {
+            const i = e.perm[b * e.SF + s], k = e.k1 + i;
+            z += re[k] * Math.cos(e.ph[i]) + im[k] * Math.sin(e.ph[i]);
+          }
+          if ((z >= 0 ? 1 : -1) !== e.bits[b]) err++; n++;
+        }
+      } else {
+        for (let j = 0; j < e.nb; j++) {
+          const k = e.k1 + j;
+          if ((re[k] >= 0 ? 1 : -1) !== e.sr[j]) err++;
+          if ((im[k] >= 0 ? 1 : -1) !== e.si[j]) err++;
+          n += 2;
+        }
+      }
+    }
+    if (n) this.hist.push({ t: tsec, err, n });
+    while (this.hist.length && this.hist[0].t < tsec - 3) this.hist.shift();
+    let E = 0, N = 0; for (const h of this.hist) { E += h.err; N += h.n; }
+    return { ber: N ? E / N : NaN, bits: N, rate: N / 3, nNew: n, eNew: err };
+  }
+}
+
+// ---------- Willie ----------
+class EMA { // media exponencial con correccion del sesgo inicial; vf = factor de varianza
+  constructor(tau) { this.tau = tau; this.S = 0; this.C = 0; this.A = 0; }
+  push(x, dt) { const l = Math.exp(-dt / this.tau); this.S = l * this.S + x; this.C = l * this.C + 1; this.A = l * l * this.A + 1; this.l = l; }
+  get m() { return this.C ? this.S / this.C : 0; }
+  get vf() { return this.C ? this.A / (this.C * this.C) : 1; }
+}
+class Rule {
+  constructor() { this.on = false; this.up = 0; this.dn = 0; this.win = []; }
+  push(z, th, kind) {
+    const hit = z > th;
+    if (kind === "kofn") {
+      this.win.push(hit ? 1 : 0); if (this.win.length > 10) this.win.shift();
+      this.on = this.win.reduce((a, b) => a + b, 0) >= 5;
+      return this.on;
+    }
+    this.up = hit ? this.up + 1 : 0;
+    this.dn = z < 0.8 * th ? this.dn + 1 : 0;
+    if (!this.on && this.up >= 3) this.on = true;
+    else if (this.on && this.dn >= 10) this.on = false;
+    return this.on;
+  }
+}
+
+class Willie {
+  constructor(cfg) {
+    this.raw = new Float64Array(MW); this.re = new Float64Array(MW); this.im = new Float64Array(MW);
+    this.br = new Float64Array(MW); this.bi = new Float64Array(MW);
+    this.spec = new Float64Array(256); this.frames = 0;
+    this.configure(cfg, true);
+  }
+  configure(cfg, reset) {
+    const bandChanged = !this.cfg || this.cfg.band !== cfg.band;
+    const Wchanged = !this.cfg || this.cfg.W !== cfg.W;
+    this.cfg = Object.assign({}, cfg);
+    if (reset) { this.raw.fill(0); this.frames = 0; this.spec.fill(0); }
+    if (bandChanged || reset) {
+      const b = BANDS_W[cfg.band];
+      [this.k1, this.k2] = bandBinsF(b.f1, b.f2, MW);
+      this.Bw = (this.k2 - this.k1 + 1) * FS / MW;
+      const ref = cfg.band === "all" ? [20000, 23500] : null;
+      const g = Math.round(100 * MW / FS);
+      const [r1, r2] = bandBinsF(ref ? ref[0] : 300, ref ? ref[1] : 20000, MW);
+      this.outBins = [];
+      for (let k = r1; k <= r2; k++) if (ref || k < this.k1 - g || k > this.k2 + g) this.outBins.push(k);
+      this.Bout = this.outBins.length * FS / MW;
+      // ancho de banda efectivo (int S)^2 / int S^2: el fondo no es plano y eso aumenta la varianza
+      const beff = (ks) => { let a = 0, b = 0; for (const k of ks) { const S = Sbg(k * FS / MW); a += S; b += S * S; } return a * a / b * FS / MW; };
+      const kin = []; for (let k = this.k1; k <= this.k2; k++) kin.push(k);
+      this.BeIn = beff(kin); this.BeOut = beff(this.outBins);
+      let c = 0, sw = 0;
+      for (let k = this.k1; k <= this.k2; k++) { const S = Sbg(k * FS / MW); c += S * Math.cos(2 * Math.PI * k * NSYM / MW); sw += S; }
+      this.mu0 = c / sw;          // correlacion a retardo N del fondo nominal filtrado a la banda
+      this.ybPrev = new Float64Array(NSYM);
+      this.resetStats();
+      this.recalibrate();
+    } else if (Wchanged) this.setTaus();
+  }
+  setTaus() {
+    const W = this.cfg.W;
+    for (const e of [this.Ein, this.Eout, this.Cnum, this.Cden]) e.tau = W;
+    this.Es.tau = W; this.El.tau = 8 * W; this.foldTau = W;
+  }
+  resetStats() {
+    const W = this.cfg.W;
+    this.Ein = new EMA(W); this.Eout = new EMA(W); this.Cnum = new EMA(W); this.Cden = new EMA(W);
+    this.Es = new EMA(W); this.El = new EMA(8 * W); this.X = 0;
+    this.foldTau = W;
+    this.periods = [PER].concat(FOLD_OFF.map(f => PER * f));
+    this.fS = this.periods.map(() => new Float64Array(FOLD_BINS));
+    this.fC = this.periods.map(() => new Float64Array(FOLD_BINS));
+    this.rules = {}; for (const k in DET) this.rules[k] = new Rule();
+  }
+  recalibrate() { this.cal = { n: 0, sin: 0, sout: 0, done: false, t: 0 }; for (const k in DET) this.rules[k] = new Rule(); }
+
+  process(y, gIdx, dt) {
+    const c = this.cfg, M = MW, h = FRAME;
+    this.raw.copyWithin(0, h); this.raw.set(y, h); this.frames++;
+    const re = this.re, im = this.im;
+    re.set(this.raw); im.fill(0); fft(re, im, false);
+    // espectro (256 casillas) para la pantalla
+    const sp = new Float64Array(256), per = (M / 2) / 256;
+    for (let k = 1; k < M / 2; k++) sp[Math.floor(k / per)] += (re[k] * re[k] + im[k] * im[k]) * 2 / (M * M);
+    const ls = Math.exp(-dt / 1.5);
+    for (let i = 0; i < 256; i++) this.spec[i] = this.frames < 3 ? sp[i] : ls * this.spec[i] + (1 - ls) * sp[i];
+    if (this.frames < 2) return null; // la ventana de 8192 aun no esta llena
+
+    let pin = 0; for (let k = this.k1; k <= this.k2; k++) pin += re[k] * re[k] + im[k] * im[k];
+    pin *= 2 / (M * M);
+    let pout = 0; for (const k of this.outBins) pout += re[k] * re[k] + im[k] * im[k];
+    pout *= 2 / (M * M);
+    // senal filtrada a la banda vigilada (solapamiento y descarte)
+    const br = this.br, bi = this.bi; br.fill(0); bi.fill(0);
+    for (let k = this.k1; k <= this.k2; k++) { br[k] = re[k]; bi[k] = im[k]; br[M - k] = re[k]; bi[M - k] = -im[k]; }
+    fft(br, bi, true);
+    const yb = new Float64Array(h); for (let i = 0; i < h; i++) yb[i] = br[h + i] / M;
+
+    // estadisticos de la trama
+    let num = 0, den = 0;
+    const prev = this.ybPrev;
+    for (let i = 0; i < h; i++) {
+      const lagv = i >= NSYM ? yb[i - NSYM] : prev[i];
+      num += yb[i] * lagv; den += yb[i] * yb[i];
+    }
+    this.ybPrev = yb.slice(h - NSYM);
+    this.Ein.push(pin, dt); this.Eout.push(pout, dt); this.Cnum.push(num, dt); this.Cden.push(den, dt);
+    const lsS = Math.exp(-dt / this.Es.tau), lsL = Math.exp(-dt / this.El.tau);
+    this.Es.push(pin, dt); this.El.push(pin, dt); this.X = lsS * lsL * this.X + 1;
+    // plegado
+    const lf = Math.exp(-dt / this.foldTau);
+    for (let p = 0; p < this.periods.length; p++) {
+      const P = this.periods[p], S = this.fS[p], C = this.fC[p];
+      for (let b = 0; b < FOLD_BINS; b++) { S[b] *= lf; C[b] *= lf; }
+      let ph = (gIdx % P) / P; const st = 1 / P;
+      for (let i = 0; i < h; i++) {
+        const b = Math.min(FOLD_BINS - 1, Math.floor(ph * FOLD_BINS));
+        S[b] += yb[i] * yb[i]; C[b] += 1;
+        ph += st; if (ph >= 1) ph -= 1;
+      }
+    }
+    // calibracion
+    const cal = this.cal;
+    if (!cal.done) {
+      cal.n++; cal.sin += pin; cal.sout += pout; cal.t += dt;
+      if (cal.t >= TCAL) { cal.done = true; cal.Nin = cal.sin / cal.n; cal.R = cal.sin / cal.sout; cal.T = cal.t; }
+    }
+
+    const dF = 2 * this.BeIn * FRAME / FS, dFo = 2 * this.BeOut * FRAME / FS;
+    const zP = Qinv(c.pfa), zP2 = Qinv(c.pfa / 2), mlin = lin(c.mE), mch = lin(c.mC), mco = lin(c.mS);
+    const out = {};
+    // 1. energia
+    if (cal.done) {
+      const dcal = 2 * this.BeIn * cal.T;
+      const sd = Math.sqrt(2 * this.Ein.vf / dF + 2 / dcal);
+      out.energy = { z: (this.Ein.m / (cal.Nin * mlin) - 1) / sd, th: zP };
+    } else out.energy = null;
+    // 2. cambio: media corta (W) frente a larga (8W), dos colas, con el margen
+    {
+      const r = this.Es.m / this.El.m;
+      const v = (2 / dF) * (this.Es.vf + this.El.vf - 2 * this.X / (this.Es.C * this.El.C));
+      const sd = Math.sqrt(Math.max(v, 1e-12));
+      let z;
+      if (r >= mch) z = (r / mch - 1) / sd; else if (r <= 1 / mch) z = (1 - r * mch) / sd; else z = 0;
+      out.change = cal.done ? { z, th: zP2 } : null;
+    }
+    // 3. contraste espectral en banda / fuera de banda, dos colas
+    if (cal.done) {
+      const R = this.Ein.m / this.Eout.m;
+      const sd = Math.sqrt(2 * this.Ein.vf / dF + 2 * this.Eout.vf / dFo + 2 / (2 * this.BeIn * cal.T) + 2 / (2 * this.BeOut * cal.T));
+      const q = R / cal.R;
+      out.contrast = { z: q >= mco ? (q / mco - 1) / sd : q <= 1 / mco ? (1 - q * mco) / sd : 0, th: zP2 };
+    } else out.contrast = null;
+    // 4. correlacion a retardo N (prefijo ciclico)
+    {
+      const rho = this.Cnum.m / this.Cden.m;
+      const sd = Math.sqrt(this.Cnum.vf / dF);
+      out.cp = cal.t > 2 * c.W || cal.done ? { z: (rho - this.mu0) / sd, th: zP, val: rho } : null;
+    }
+    // 5. plegado en P = 1152 frente a periodos de referencia fuera de ciclo
+    {
+      const v = this.periods.map((P, p) => {
+        const S = this.fS[p], C = this.fC[p]; let m = 0, m2 = 0;
+        for (let b = 0; b < FOLD_BINS; b++) { const x = S[b] / C[b]; m += x; m2 += x * x; }
+        m /= FOLD_BINS; m2 /= FOLD_BINS; return (m2 - m * m) / (m * m);
+      });
+      const no = v.length - 1;
+      let voff = 0; for (let p = 1; p < v.length; p++) voff += v[p]; voff /= no;
+      let s2 = 0; for (let p = 1; p < v.length; p++) s2 += (v[p] - voff) * (v[p] - voff); s2 /= no - 1;
+      const sdRel = Math.max(Math.sqrt(2 / (FOLD_BINS - 1)), Math.sqrt(s2) / voff);
+      const sd = sdRel * Math.sqrt(1 + 1 / no);
+      out.fold = cal.t > 2 * c.W || cal.done ? { z: (v[0] / voff - 1) / sd, th: zP } : null;
+    }
+    // reglas de alarma
+    for (const k in DET) {
+      const d = out[k];
+      if (!c.en[k]) { out[k] = { off: true }; continue; }
+      if (!d) { out[k] = { cal: true }; continue; }
+      d.alarm = this.rules[k].push(d.z, d.th, c.rule);
+    }
+    out.Bw = this.Bw; out.pin = pin;
+    return out;
+  }
+}
+
+// ---------- Motor ----------
+class Engine {
+  constructor(seed) {
+    this.seed = (seed >>> 0) || ((Date.now() ^ 0x5bd1e995) >>> 0);
+    this.pos = { A: [0.25, 0.5], B: [0.65, 0.5], W: [0.45, 0.8] };
+    this.scene = { side: 2000, k: 2, varDb: 0.5, colorDb: 0.3 };
+    this.acfg = { on: false, mode: "cp", PtxDb: 60, ramp: 0, band: "b26", SF: 16, startOn: false };
+    this.wcfg = { band: "b26", W: 5, pfa: 1e-4, mE: 1.5, mC: 0.5, mS: 0.5, rule: "hyst", en: { energy: true, change: true, contrast: true, cp: true, fold: true } };
+    this.reset();
+  }
+  reset() {
+    const s = this.seed = (this.seed * 1664525 + 1013904223) >>> 0;
+    this.t = 0; this.alice = new Alice(s ^ 0xa11ce); this.bob = new Bob(); this.willie = new Willie(this.wcfg);
+    this.gB = gaussGen(mulberry32(s ^ 0xb0b)); this.gW = gaussGen(mulberry32(s ^ 0x3111e));
+    this.gR = gaussGen(mulberry32(s ^ 0x2b0));
+    this.rxB = { g: gaussGen(mulberry32(s ^ 0xb0b1)), l: 0 }; this.rxW = { g: gaussGen(mulberry32(s ^ 0x3112)), l: 0 };
+    this.ou = 0; this.ou2 = 0; this.phi = 2 * Math.PI * mulberry32(s)(); this.rho = 1; this.col = 1;
+    if (this.acfg.startOn) { this.acfg.on = true; this.alice.p = 1; }
+    this.tOn = this.acfg.on ? 0 : null; this.tOff = this.acfg.on ? null : -1e9; this.wasOn = this.acfg.on;
+    this.score = {}; for (const k in DET) this.score[k] = { first: null, fa: 0, prev: false };
+  }
+  dist(a, b) { const p = this.pos[a], q = this.pos[b]; return Math.max(1, Math.hypot(p[0] - q[0], p[1] - q[1]) * this.scene.side); }
+  gain(d) { return lin(this.acfg.PtxDb) * Math.pow(d, -this.scene.k); }
+  step() {
+    const dt = FRAME / FS, tsec = this.t / FS;
+    // fondo: seno lento + Ornstein-Uhlenbeck, en dB
+    // nivel: deriva lenta (seno de 10 min) + paseo aleatorio suave; maximo tipico ~ +-varDb
+    const tauOU = 60; this.ou += -this.ou * dt / tauOU + Math.sqrt(2 * dt / tauOU) * this.gR();
+    const A = this.scene.varDb, udb = A * (0.8 * Math.sin(2 * Math.PI * tsec / 600 + this.phi) + 0.2 * this.ou);
+    const rho = this.rho = lin(udb), sr = Math.sqrt(rho);
+    const tau2 = 30; this.ou2 += -this.ou2 * dt / tau2 + Math.sqrt(2 * dt / tau2) * this.gR();
+    const col = this.col = lin(this.scene.colorDb * this.ou2), sc = Math.sqrt(rho * col) * LP_B;
+    const { u, env } = this.alice.produce(FRAME, this.acfg);
+    const aB = Math.sqrt(this.gain(this.dist("A", "B"))), aW = Math.sqrt(this.gain(this.dist("A", "W")));
+    const yB = new Float64Array(FRAME), yW = new Float64Array(FRAME);
+    const rB = this.rxB, rW = this.rxW, gB = this.gB, gW = this.gW, a = LP_A;
+    let lB = rB.l, lW = rW.l;
+    for (let i = 0; i < FRAME; i++) {
+      const s = env[i] * u[i];
+      lB = a * lB + rB.g(); lW = a * lW + rW.g();
+      yB[i] = aB * s + sr * gB() + sc * lB; yW[i] = aW * s + sr * gW() + sc * lW;
+    }
+    rB.l = lB; rW.l = lW;
+    this.bob.push(this.t, yB, env, BANDS_A[this.acfg.band]);
+    const bob = this.bob.decode(this.alice.log, this.t + FRAME, tsec);
+    const w = this.willie.process(yW, this.t, dt);
+    // verdad del terreno: Alice emite?
+    const on = this.alice.p > 0.01;
+    if (on && !this.wasOn) { this.tOn = tsec; for (const k in DET) this.score[k].first = null; }
+    if (!on && this.wasOn) this.tOff = tsec;
+    this.wasOn = on;
+    if (w) for (const k in DET) {
+      const d = w[k], sc = this.score[k], al = !!(d && d.alarm);
+      if (al && !sc.prev) {
+        if (on && sc.first === null) sc.first = tsec - this.tOn;
+        else if (!on && tsec - this.tOff > 8 * this.wcfg.W) sc.fa++;
+      }
+      sc.prev = al;
+    }
+    const bA = BANDS_A[this.acfg.band], bW = BANDS_W[this.wcfg.band];
+    const pnow = this.alice.p;
+    const snrB = this.gain(this.dist("A", "B")) * pnow / (rho * noiseIn(bA.f1, bA.f2, col));
+    const frac = this.fracW();
+    const snrW = this.gain(this.dist("A", "W")) * pnow * frac / (rho * noiseIn(bW.f1, bW.f2, col));
+    const rec = { t: tsec, rho, col, on, p: pnow, snrB, snrW, bob, w, yB, yW };
+    this.t += FRAME;
+    return rec;
+  }
+  // fraccion de la potencia de Alice que cae en la banda vigilada por Willie
+  fracW() {
+    const bA = BANDS_A[this.acfg.band], bW = BANDS_W[this.wcfg.band];
+    const lo = Math.max(bA.f1, bW.f1), hi = Math.min(bA.f2, bW.f2);
+    if (hi <= lo) return 0;
+    if (!bA.shaped) return (hi - lo) / (bA.f2 - bA.f1);
+    return noiseIn(lo, hi) / noiseIn(bA.f1, bA.f2);
+  }
+  // radios analiticos con el fondo nominal: Bob recibe dentro de rc; la energia de Willie detecta dentro de rd
+  analytic() {
+    const bA = BANDS_A[this.acfg.band], bW = BANDS_W[this.wcfg.band], k = this.scene.k, P = lin(this.acfg.PtxDb);
+    let req = snrReq(this.acfg.mode, this.acfg.SF);
+    if (this.acfg.mode === "gauss") req /= etaBand(bA);
+    const rc = Math.pow(P / (req * noiseIn(bA.f1, bA.f2)), 1 / k);
+    const BW = this.willie.BeIn;
+    const sd = Math.sqrt(2 / (4 * BW * this.wcfg.W) + 2 / (2 * BW * TCAL));
+    const sReq = lin(this.wcfg.mE) * (1 + Qinv(this.wcfg.pfa) * sd) - 1;
+    const frac = this.fracW();
+    const rd = frac > 0 ? Math.pow(P * frac / (sReq * noiseIn(bW.f1, bW.f2)), 1 / k) : 0;
+    return { rc, rd, req, sReq };
+  }
+}
+if (false) module.exports = { Engine, noiseIn, etaBand, Sbg, snrReq, DET, MODES, BANDS_A, BANDS_W, FS, FRAME, Q, Qinv, lin, db };
+
+// ============================================================================
+// Modem acustico real (altavoz -> microfono). Sin DOM: se prueba con node.
+// Paquete: [preambulo con clave 4096][simbolo de referencia][simbolos de datos]
+// OFDM N = 1024, CP = 128 (periodo 1152), DBPSK diferencial en el tiempo por
+// portadora, con rotaciones de fase con clave y cada bit repetido en SF portadoras.
+// Bits: longitud(8) id(8) parte(4) total(4) | carga | CRC-16.
+// ============================================================================
+const RM = { N: 1024, G: 128, P: 1152, LPRE: 4096, BACK: 32, MAXSYM: 80, MAXPAY: 48 };
+
+function crc16(bytes) {
+  let c = 0xffff;
+  for (const b of bytes) { c ^= b << 8; for (let i = 0; i < 8; i++) c = c & 0x8000 ? ((c << 1) ^ 0x1021) & 0xffff : (c << 1) & 0xffff; }
+  return c;
+}
+function bytesToBits(bytes) { const o = []; for (const b of bytes) for (let i = 7; i >= 0; i--) o.push((b >> i) & 1); return o; }
+function bitsToBytes(bits) { const o = new Uint8Array(bits.length >> 3); for (let i = 0; i < o.length; i++) { let b = 0; for (let j = 0; j < 8; j++) b = (b << 1) | bits[8 * i + j]; o[i] = b; } return o; }
+
+// Todo lo que depende de la clave, la banda y SF (comun a emisor y receptor)
+class ModemPlan {
+  constructor(key, bandKey, SF) {
+    const band = BANDS_A[bandKey];
+    const { N } = RM;
+    const [k1, k2] = bandBinsF(band.f1, band.f2, N);
+    this.k1 = k1; this.nb = k2 - k1 + 1; this.SF = Math.max(1, Math.min(SF, this.nb));
+    this.B = Math.floor(this.nb / this.SF);                    // bits por simbolo
+    this.band = band; this.key = key; this.bandKey = bandKey;
+    const rng = mulberry32(hashStr("modem:" + key + ":" + bandKey + ":" + SF));
+    this.perm = new Uint16Array(this.nb); for (let i = 0; i < this.nb; i++) this.perm[i] = i;
+    for (let i = this.nb - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); const t = this.perm[i]; this.perm[i] = this.perm[j]; this.perm[j] = t; }
+    this.phi0 = new Float64Array(this.nb); for (let i = 0; i < this.nb; i++) this.phi0[i] = 2 * Math.PI * rng();
+    this.th = []; for (let m = 0; m <= RM.MAXSYM + 1; m++) { const a = new Float64Array(this.nb); for (let i = 0; i < this.nb; i++) a[i] = 2 * Math.PI * rng(); this.th.push(a); }
+    this.fill = []; for (let m = 0; m <= RM.MAXSYM + 1; m++) { const a = new Uint8Array(this.nb); for (let i = 0; i < this.nb; i++) a[i] = rng() < 0.5 ? 1 : 0; this.fill.push(a); }
+    // preambulo: ruido de banda limitada con clave, 4096 muestras, potencia unidad, bordes suavizados
+    const L = RM.LPRE, [p1, p2] = bandBinsF(band.f1, band.f2, L), g = gaussGen(rng), ks = [], xr = [], xi = [];
+    for (let k = p1; k <= p2; k++) { ks.push(k); xr.push(g()); xi.push(g()); }
+    const pre = realFromBins(L, ks, xr, xi);
+    let e = 0; for (let i = 0; i < L; i++) e += pre[i] * pre[i];
+    const sc = 1 / Math.sqrt(e / L), T = 128;
+    for (let i = 0; i < L; i++) { let w = 1; if (i < T) w = 0.5 - 0.5 * Math.cos(Math.PI * i / T); else if (i >= L - T) w = 0.5 - 0.5 * Math.cos(Math.PI * (L - 1 - i) / T); pre[i] *= sc * w; }
+    this.pre = pre;
+    const ys = [], yr = [], yi = []; for (let k = p1; k <= p2; k++) { ys.push(k); yr.push(g()); yi.push(g()); }
+    const post = realFromBins(L, ys, yr, yi); let e2 = 0; for (let i = 0; i < L; i++) e2 += post[i] * post[i];
+    for (let i = 0; i < L; i++) { let w = 1; if (i < T) w = 0.5 - 0.5 * Math.cos(Math.PI * i / T); else if (i >= L - T) w = 0.5 - 0.5 * Math.cos(Math.PI * (L - 1 - i) / T); post[i] *= w / Math.sqrt(e2 / L); }
+    this.post = post;
+    this.payMax = Math.max(1, Math.min(RM.MAXPAY, Math.floor((RM.MAXSYM * this.B - 48) / 8)));
+    this.dims = 2 * (band.f2 - band.f1) * L / FS;               // dimensiones del preambulo
+  }
+  symbolsFor(nbits) { return Math.ceil(nbits / this.B); }
+}
+
+// Emisor: texto -> lista de paquetes (Float32Array a 48 kHz)
+function splitMessage(plan, text, msgId) {
+  const bytes = new TextEncoder().encode(text);
+  const per = plan.payMax, n = Math.max(1, Math.ceil(bytes.length / per));
+  if (n > 15) throw new Error(`Mensaje demasiado largo para SF = ${plan.SF}: máximo ${15 * per} bytes`);
+  const parts = [];
+  for (let p = 0; p < n; p++) parts.push(buildPacket(plan, bytes.subarray(p * per, (p + 1) * per), msgId, p, n));
+  return parts;
+}
+function packetBits(payload, msgId, part, nparts) {
+  const head = new Uint8Array([payload.length, msgId & 255, ((part & 15) << 4) | (nparts & 15)]);
+  const hchk = crc16(head) & 255;
+  const body = new Uint8Array(4 + payload.length); body.set(head); body[3] = hchk; body.set(payload, 4);
+  const crc = crc16(body), all = new Uint8Array(body.length + 2); all.set(body); all[body.length] = crc >> 8; all[body.length + 1] = crc & 255;
+  return bytesToBits(all);
+}
+// simbolo m (0 y 1 = referencias): fase con clave por portadora y signo +-1 por bit
+function symbolPhases(plan, m, bits) {
+  const ph = new Float64Array(plan.nb);
+  if (m === 0) { ph.set(plan.phi0); return ph; }
+  if (m === 1) { ph.set(plan.th[0]); return ph; }
+  const d = m - 2, b = new Uint8Array(plan.nb); b.set(plan.fill[d]);
+  for (let j = 0; j < plan.B; j++) { const bi = d * plan.B + j, v = bits && bi < bits.length ? bits[bi] : plan.fill[d][j]; for (let s = 0; s < plan.SF; s++) b[plan.perm[j * plan.SF + s]] = v; }
+  for (let i = 0; i < plan.nb; i++) ph[i] = plan.th[d + 1][i] + (b[i] ? Math.PI : 0);
+  return ph;
+}
+function packetLen(nsym) { return RM.LPRE + (nsym + 2) * RM.P; }   // hasta el inicio del postambulo
+function buildPacket(plan, payload, msgId, part, nparts) {
+  const { N, G, P, LPRE } = RM;
+  const bits = packetBits(payload, msgId, part, nparts), nsym = plan.symbolsFor(bits.length);
+  const L0 = packetLen(nsym), len = L0 + LPRE + 64;
+  const out = new Float64Array(len);
+  out.set(plan.pre, 0); out.set(plan.post, L0);
+  const ks = []; for (let i = 0; i < plan.nb; i++) ks.push(plan.k1 + i);
+  const c0 = N / Math.sqrt(2 * plan.nb), xr = new Float64Array(plan.nb), xi = new Float64Array(plan.nb);
+  for (let m = 0; m < nsym + 2; m++) {
+    const ph = symbolPhases(plan, m, bits);
+    for (let i = 0; i < plan.nb; i++) { xr[i] = Math.cos(ph[i]); xi[i] = Math.sin(ph[i]); }
+    const x = realFromBins(N, ks, xr, xi), o = LPRE + m * P;
+    for (let t = 0; t < G; t++) out[o + t] = c0 * x[N - G + t];
+    for (let t = 0; t < N; t++) out[o + G + t] = c0 * x[t];
+  }
+  let pk = 0; for (let i = 0; i < len; i++) pk = Math.max(pk, Math.abs(out[i]));
+  const f = new Float32Array(len); for (let i = 0; i < len; i++) f[i] = out[i] / pk;
+  return { samples: f, nsym, bytes: payload.length, msgId, part, nparts };
+}
+
+// Receptor: se le dan tramas de 4096 muestras a 48 kHz
+class ModemRx {
+  constructor(plan, onPacket) {
+    this.plan = plan; this.onPacket = onPacket || (() => {});
+    this.H = 1 << 18; this.buf = new Float64Array(this.H); this.n = 0;     // n = muestras recibidas
+    this.state = "search"; this.searchFrom = 0; this.thr = 30;
+    this.metric = 0; this.stats = { sync: 0, ok: 0, bad: 0, falsas: 0 };
+    const MF = 16384; this.MF = MF;
+    const pr = new Float64Array(MF), pi = new Float64Array(MF); pr.set(plan.pre); fft(pr, pi, false);
+    this.Pr = pr; this.Pi = pi;
+    const qr = new Float64Array(MF), qi = new Float64Array(MF); qr.set(plan.post); fft(qr, qi, false);
+    this.Qr = qr; this.Qi = qi;
+    [this.b1, this.b2] = bandBinsF(plan.band.f1, plan.band.f2, MF);
+    let ep = 0; for (const v of plan.pre) ep += v * v; this.Ep = ep;
+    this.wr = new Float64Array(MF); this.wi = new Float64Array(MF); this.fr = new Float64Array(MF); this.fi = new Float64Array(MF);
+    this.re = new Float64Array(RM.N); this.im = new Float64Array(RM.N);
+  }
+  at(i) { return this.buf[i & (this.H - 1)]; }
+  push(frame) {
+    const m = this.H - 1;
+    for (let i = 0; i < frame.length; i++) this.buf[(this.n + i) & m] = frame[i];
+    this.n += frame.length;
+    if (this.state === "search") this.search(); else this.decode();
+    if (this.state === "search" && this.n - this.searchFrom > 12288) this.search();
+  }
+  search() {
+    const MF = this.MF, Wn = 12288, L = RM.LPRE;
+    if (this.n < Wn) { this.metric = 0; return; }
+    const w0 = this.n - Wn;
+    const wr = this.wr, wi = this.wi, fr = this.fr, fi = this.fi;
+    wr.fill(0); wi.fill(0);
+    for (let i = 0; i < Wn; i++) wr[i] = this.at(w0 + i);
+    fft(wr, wi, false);
+    // banda: senal filtrada (para la energia) y correlacion con el preambulo
+    for (let k = 0; k < MF; k++) {
+      const kk = k <= MF / 2 ? k : MF - k, inb = kk >= this.b1 && kk <= this.b2;
+      const a = inb ? wr[k] : 0, b = inb ? wi[k] : 0;
+      fr[k] = a * this.Pr[k] + b * this.Pi[k]; fi[k] = b * this.Pr[k] - a * this.Pi[k];   // W * conj(P)
+      wr[k] = a; wi[k] = b;
+    }
+    fft(fr, fi, true); fft(wr, wi, true);
+    const cs = new Float64Array(Wn + 1);
+    for (let i = 0; i < Wn; i++) { const v = wr[i] / MF; cs[i + 1] = cs[i] + v * v; }
+    let best = 0, bl = -1;
+    const lmin = Math.max(0, this.searchFrom - w0);
+    for (let l = lmin; l <= Wn - L; l++) {
+      const c = fr[l] / MF, ew = cs[l + L] - cs[l];
+      if (ew <= 0) continue;
+      const M = c * c / (this.Ep * ew) * this.plan.dims;
+      if (M > best) { best = M; bl = l; }
+    }
+    this.metric = best;
+    if (best > this.thr && bl >= 0) {
+      this.t0 = w0 + bl; this.t0f = this.t0; this.eps = 0; this.state = "packet"; this.need = null; this.postFrom = 0;
+      this.zs = []; this.syncM = best; this.stats.sync++;
+      this.decode();
+    }
+  }
+  // correlacion compleja (envolvente) con el preambulo en [a, a + len); devuelve el pico fraccionario absoluto
+  envPeak(a, len, usePost) {
+    const MF = this.MF, wr = this.fr, wi = this.fi, L = RM.LPRE;
+    const Pr = usePost ? this.Qr : this.Pr, Pi = usePost ? this.Qi : this.Pi;
+    wr.fill(0); wi.fill(0);
+    for (let i = 0; i < len; i++) wr[i] = this.at(a + i);
+    fft(wr, wi, false);
+    let eb = 0;
+    for (let k = 0; k < MF; k++) {
+      if (k < this.b1 || k > this.b2) { wr[k] = wi[k] = 0; continue; }       // solo frecuencias positivas: analitica
+      const x = wr[k], y = wi[k]; eb += x * x + y * y;
+      wr[k] = 2 * (x * Pr[k] + y * Pi[k]); wi[k] = 2 * (y * Pr[k] - x * Pi[k]);
+    }
+    fft(wr, wi, true);
+    let best = -1, bl = 0;
+    for (let l = 0; l <= len - L; l++) { const v = wr[l] * wr[l] + wi[l] * wi[l]; if (v > best) { best = v; bl = l; } }
+    const m = (l) => Math.sqrt(wr[l] * wr[l] + wi[l] * wi[l]);
+    let frac = 0;
+    if (bl > 0 && bl < len - L) { const y0 = m(bl - 1), y1 = m(bl), y2 = m(bl + 1), d = y0 - 2 * y1 + y2; if (d < 0) frac = 0.5 * (y0 - y2) / d; }
+    const ew = 2 * eb / MF * L / len;                 // energia en banda por cada L muestras (Parseval)
+    return { pos: a + bl + frac, M: (best / (MF * MF)) / (this.Ep * Math.max(ew, 1e-30)) * this.plan.dims };
+  }
+  // FFT del simbolo m con temporizacion t0 + (s - t0)(1 + eps) y retardo fraccionario corregido
+  fftSym(m) {
+    const { N, G, P, LPRE, BACK } = RM, pl = this.plan;
+    const nom = LPRE + m * P + G - BACK, x = this.t0f + nom * (1 + this.eps), s = Math.floor(x), d = x - s;
+    const re = this.re, im = this.im, Y = new Float64Array(2 * pl.nb);
+    for (let t = 0; t < N; t++) { re[t] = this.at(s + t); im[t] = 0; }
+    fft(re, im, false);
+    for (let i = 0; i < pl.nb; i++) {
+      const k = pl.k1 + i, a = 2 * Math.PI * k * d / N, c = Math.cos(a), sn = Math.sin(a);
+      Y[2 * i] = re[k] * c - im[k] * sn; Y[2 * i + 1] = re[k] * sn + im[k] * c;
+    }
+    return Y;
+  }
+  avail(m) { const { N, G, P, LPRE } = RM; return this.t0f + (LPRE + m * P + G + N) * (1 + this.eps) + 8 <= this.n; }
+  // canal por portadora a partir de las referencias (y de los datos ya decididos, si se dan)
+  estimate(Ys, phs) {
+    const nb = this.plan.nb, H = new Float64Array(2 * nb);
+    for (let m = 0; m < Ys.length; m++) {
+      const Y = Ys[m], ph = phs[m];
+      for (let i = 0; i < nb; i++) { const c = Math.cos(ph[i]), s = Math.sin(ph[i]); H[2 * i] += Y[2 * i] * c + Y[2 * i + 1] * s; H[2 * i + 1] += Y[2 * i + 1] * c - Y[2 * i] * s; }
+    }
+    for (let i = 0; i < 2 * nb; i++) H[i] /= Ys.length;
+    return H;
+  }
+  // decisiones de un simbolo de datos (combinando SF portadoras con pesos del canal)
+  decide(Y, d, H) {
+    const pl = this.plan, th = pl.th[d + 1], bits = [], q = [];
+    for (let j = 0; j < pl.B; j++) {
+      let S = 0, mag = 0;
+      for (let s = 0; s < pl.SF; s++) {
+        const i = pl.perm[j * pl.SF + s], c = Math.cos(th[i]), sn = Math.sin(th[i]);
+        const hr = H[2 * i] * c - H[2 * i + 1] * sn, hi = H[2 * i] * sn + H[2 * i + 1] * c;   // H * X0
+        const v = Y[2 * i] * hr + Y[2 * i + 1] * hi;                                           // Re(Y conj(H X0))
+        S += v; mag += Math.hypot(Y[2 * i], Y[2 * i + 1]) * Math.hypot(hr, hi);
+      }
+      bits.push(S < 0 ? 1 : 0); q.push(mag > 0 ? Math.abs(S) / mag : 0);
+    }
+    return { bits, q };
+  }
+  decode() {
+    const pl = this.plan, { P, LPRE } = RM;
+    if (this.state === "packet") {
+      // 1. buscar el postambulo en lo que va llegando: da la longitud del paquete y la deriva del reloj
+      const lo = Math.floor(this.t0 + packetLen(1) * (1 - 5e-4)) - 24, hiAll = Math.ceil(this.t0 + packetLen(RM.MAXSYM) * (1 + 5e-4)) + 24;
+      const a = Math.max(lo, this.postFrom || lo), avail = Math.min(this.n, hiAll + LPRE) - a;
+      if (avail < LPRE + 512 && this.n < hiAll + LPRE) return;
+      if (avail >= LPRE) {
+        const len = Math.min(avail, 12288), p1 = this.envPeak(a, len, true);
+        if (p1.M > this.thr) {
+          const raw = (p1.pos - this.t0 - LPRE) / P - 2, nsym = Math.round(raw);
+          if (nsym >= 1 && nsym <= RM.MAXSYM && Math.abs(p1.pos - this.t0 - packetLen(nsym)) < 5e-4 * packetLen(nsym) + 24) {
+            const p0 = this.envPeak(this.t0 - 24, LPRE + 48, false);
+            this.t0f = p0.pos; this.nsym = nsym; this.eps = (p1.pos - p0.pos) / packetLen(nsym) - 1; this.postM = p1.M;
+            this.state = "wait";
+          }
+        }
+        if (this.state === "packet") {
+          this.postFrom = a + len - LPRE;
+          if (this.postFrom >= hiAll - 1) { this.fail(true); return; }
+          if (this.n - this.postFrom >= LPRE + 512) return this.decode();
+          return;
+        }
+      } else return;
+    }
+    if (this.state === "wait") {
+      if (!this.avail(this.nsym + 1)) return;
+      // 2. decodificacion coherente iterativa: canal con las referencias y luego con los datos decididos
+      const Ys = [], phs = [symbolPhases(pl, 0), symbolPhases(pl, 1)];
+      for (let m = 0; m < this.nsym + 2; m++) Ys.push(this.fftSym(m));
+      let H = this.estimate(Ys.slice(0, 2), phs), out = null;
+      for (let it = 0; it < 4; it++) {
+        let bits = [], q = [];
+        for (let d = 0; d < this.nsym; d++) { const r = this.decide(Ys[d + 2], d, H); bits = bits.concat(r.bits); q = q.concat(r.q); }
+        out = { bits, q, ok: false };
+        const h = bitsToBytes(bits.slice(0, 32)), len = h[0];
+        if (len >= 1 && len <= pl.payMax && pl.symbolsFor((6 + len) * 8) === this.nsym) {
+          const need = (6 + len) * 8, by = bitsToBytes(bits.slice(0, need)), body = by.subarray(0, by.length - 2);
+          if (crc16(body) === ((by[by.length - 2] << 8) | by[by.length - 1]) && (crc16(body.subarray(0, 3)) & 255) === body[3]) { out.ok = true; out.body = body; break; }
+        }
+        const all = phs.slice();
+        for (let d = 0; d < this.nsym; d++) all.push(symbolPhases(pl, d + 2, bits));
+        H = this.estimate(Ys, all);
+      }
+      this.zs = out.q;
+      const end = Math.floor(this.t0f + (packetLen(this.nsym) + LPRE) * (1 + this.eps));
+      if (!out.ok) { this.fail(false); this.searchFrom = end; return; }
+      const body = out.body;
+      this.stats.ok++;
+      this.onPacket({ ok: true, len: body[0], msgId: body[1], part: body[2] >> 4, nparts: body[2] & 15, payload: body.slice(4), metric: this.syncM, quality: this.quality(), t0: this.t0, nsym: this.nsym, ppm: this.eps * 1e6 });
+      this.state = "search"; this.searchFrom = end;
+    }
+  }
+  quality() { // calidad media de las decisiones: |suma| / suma de modulos (1 = perfecta)
+    const a = this.zs || []; if (!a.length) return 0; let s = 0; for (const v of a) s += v; return s / a.length;
+  }
+  fail(fals) {
+    if (fals) this.stats.falsas++; else this.stats.bad++;
+    this.onPacket({ ok: false, falsa: !!fals, metric: this.syncM, quality: this.quality(), t0: this.t0 });
+    this.state = "search"; this.searchFrom = this.t0 + 2048;
+  }
+}
+
+// Reensamblado de mensajes por id
+class Assembler {
+  constructor(onMsg) { this.m = new Map(); this.onMsg = onMsg || (() => {}); this.done = new Set(); }
+  add(p) {
+    if (!p.ok) return;
+    const key = p.msgId + ":" + p.nparts;
+    if (this.done.has(key)) return "dup";
+    let e = this.m.get(key);
+    if (!e) { e = { parts: new Array(p.nparts).fill(null), first: Date.now() }; this.m.set(key, e); }
+    if (e.parts[p.part]) return "dup";
+    e.parts[p.part] = p.payload;
+    const got = e.parts.filter(Boolean).length;
+    if (got === p.nparts) {
+      const tot = e.parts.reduce((s, x) => s + x.length, 0), all = new Uint8Array(tot); let o = 0;
+      for (const x of e.parts) { all.set(x, o); o += x.length; }
+      let text; try { text = new TextDecoder("utf-8", { fatal: false }).decode(all); } catch (er) { text = "(no se pudo decodificar)"; }
+      this.m.delete(key); this.done.add(key);
+      if (this.done.size > 200) this.done = new Set([...this.done].slice(-100));
+      this.onMsg({ text, msgId: p.msgId, nparts: p.nparts });
+      return "msg";
+    }
+    return `${got}/${p.nparts}`;
+  }
+  pending() { return [...this.m.entries()].map(([k, e]) => ({ k, got: e.parts.filter(Boolean).length, n: e.parts.length })); }
+}
+if (false) Object.assign(module.exports, { RM, ModemPlan, splitMessage, ModemRx, Assembler, crc16 });
+
+// ============================================================================
+// Interfaz del juego: bucle en tiempo real, mapa arrastrable, instrumentos, audio
+// ============================================================================
+const $ = (id) => document.getElementById(id);
+const E = new Engine();
+const DT = FRAME / FS, NH = Math.ceil(40 / DT);
+const fmt = (x, d = 1) => (isFinite(x) ? x.toFixed(d).replace(".", ",").replace("-", "−") : "—");
+const fdb = (x) => (x > 0 ? fmt(db(x)) + " dB" : "−∞ dB");
+const fexp = (x) => (isFinite(x) ? (x === 0 ? "0" : x.toExponential(1).replace(".", ",").replace("e-", "e−")) : "—");
+const fdist = (m) => (m >= 10000 ? fmt(m / 1000, 0) + " km" : m >= 1000 ? fmt(m / 1000, 2) + " km" : fmt(m, 0) + " m");
+let hist = [], running = true, speed = 1, script = [], last = null, acc = 0, lastRec = null, an = E.analytic();
+let delivered = 0, firstDet = null, REAL = false;
+const SFS = [4, 8, 16, 32, 64, 128, 256];
+
+// ---------- colores desde los tokens ----------
+let C = {};
+function readColors() {
+  const cs = getComputedStyle(document.documentElement);
+  for (const k of ["alice", "bob", "willie", "ink", "muted", "line", "grid", "map", "panel", "tint", "warn"]) C[k] = cs.getPropertyValue("--" + k).trim();
+}
+function alpha(hex, a) {
+  const h = hex.replace("#", ""), n = parseInt(h.length === 3 ? h.split("").map(c => c + c).join("") : h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+// ---------- mandos ----------
+function fillSelect(id, obj) { const s = $(id); s.innerHTML = Object.entries(obj).map(([k, v]) => `<option value="${k}">${typeof v === "string" ? v : v.name}</option>`).join(""); }
+fillSelect("mode", MODES); fillSelect("band", BANDS_A); fillSelect("wband", BANDS_W);
+$("SF").innerHTML = SFS.map(v => `<option value="${v}">${v}</option>`).join("");
+const DETP = {
+  energy: { k: "mE", label: "margen de nivel", max: 3, step: 0.1, hint: "umbral = fondo calibrado × margen" },
+  change: { k: "mC", label: "tolerancia", max: 3, step: 0.1, hint: "media de W frente a media de 8W" },
+  contrast: { k: "mS", label: "margen de color", max: 2, step: 0.05, hint: "banda vigilada / resto del espectro" },
+  cp: { hint: "correlación de la banda consigo misma 1024 muestras después" },
+  fold: { hint: "perfil de potencia plegado cada 1152 muestras frente a periodos vecinos" },
+};
+$("detset").innerHTML = Object.keys(DET).map(k => {
+  const p = DETP[k];
+  const ctl = p.k ? `<div class="ctl"><label for="d_${k}">${p.label} <output id="d_${k}O"></output></label><input id="d_${k}" type="range" min="0" max="${p.max}" step="${p.step}" data-k="wcfg.${p.k}" data-f="dB" data-w><small>${p.hint}</small></div>` : `<div class="ctl"><small>${p.hint}</small></div>`;
+  return `<input type="checkbox" id="en_${k}" data-en="${k}" aria-label="${DET[k]}"><label for="en_${k}" style="font-size:13px;font-weight:500">${DET[k]}</label>${ctl}`;
+}).join("");
+
+function getPath(p) { const [o, k] = p.split("."); return E[o][k]; }
+function setPath(p, v) { const [o, k] = p.split("."); E[o][k] = v; }
+function showOut(el) {
+  const o = $(el.id + "O"); if (!o) return;
+  const v = getPath(el.dataset.k), f = el.dataset.f || "";
+  o.textContent = f === "±dB" ? "±" + fmt(v) + " dB" : f === "dB" ? fmt(v) + " dB" : f === "s" ? fmt(v, v < 10 && v % 1 ? 1 : 0) + " s" : String(v);
+}
+function syncUI() {
+  document.querySelectorAll("[data-k]").forEach(el => {
+    const v = getPath(el.dataset.k);
+    if (el.type === "checkbox") el.checked = !!v; else el.value = String(v);
+    showOut(el);
+  });
+  document.querySelectorAll("[data-en]").forEach(el => { el.checked = !!E.wcfg.en[el.dataset.en]; });
+  const g = E.acfg.mode === "gauss" || E.acfg.mode === "spread";
+  $("sfRow").style.display = g ? "" : "none";
+  $("sfHint").textContent = E.acfg.mode === "gauss" ? "Dimensiones por bit. Por debajo de 16 el filtrado a la banda cuesta S/R en Bob." : "Portadoras por bit dentro de cada símbolo.";
+  $("scaleTxt").textContent = `${fdist(E.scene.side)} × ${fdist(E.scene.side)}`;
+  updateEmit(); an = E.analytic(); stripMeta();
+}
+document.querySelectorAll("[data-k]").forEach(el => {
+  el.addEventListener("input", () => {
+    let v = el.type === "checkbox" ? el.checked : el.value;
+    if (el.type === "range" || el.dataset.num !== undefined) v = parseFloat(v);
+    setPath(el.dataset.k, v);
+    if (el.dataset.w !== undefined) E.willie.configure(E.wcfg);
+    showOut(el);
+    if (el.id === "mode" || el.id === "side") syncUI();
+    an = E.analytic(); stripMeta();
+  });
+});
+document.querySelectorAll("[data-en]").forEach(el => el.addEventListener("change", () => {
+  E.wcfg.en[el.dataset.en] = el.checked; E.willie.configure(E.wcfg); stripMeta();
+}));
+function updateEmit() {
+  for (const id of ["emit", "emit2"]) { const b = $(id); b.classList.toggle("on", E.acfg.on); b.textContent = E.acfg.on ? "Emitiendo · parar" : "Emitir"; b.setAttribute("aria-pressed", E.acfg.on); }
+}
+for (const id of ["emit", "emit2"]) $(id).addEventListener("click", () => { E.acfg.on = !E.acfg.on; script = []; updateEmit(); ensureAudio(); });
+$("play").addEventListener("click", () => { running = !running; $("play").textContent = running ? "Pausa" : "Seguir"; $("play").setAttribute("aria-pressed", !running); });
+$("restart").addEventListener("click", () => restart());
+$("speed").addEventListener("change", e => { speed = +e.target.value; audioState(); });
+$("audio").addEventListener("change", () => ensureAudio());
+$("recal").addEventListener("click", () => E.willie.recalibrate());
+function restart(keepScript) {
+  if (!keepScript) script = [];
+  E.reset(); hist = []; delivered = 0; firstDet = null; acc = 0; lastRec = null; updateEmit(); an = E.analytic();
+}
+
+// ---------- escenarios guiados ----------
+const PRESETS = [
+  { name: "1 · OFDM a pelo", note: "Willie se calibra 10 s y Alice enciende a los 12 s con CP-OFDM fuerte. Saltan casi todos los detectores en pocos segundos.",
+    a: { mode: "cp", band: "b26", PtxDb: 66, ramp: 0, startOn: false, SF: 16 }, w: { band: "b26" }, pos: { A: [0.2, 0.5], B: [0.62, 0.5], W: [0.45, 0.78] }, on: 12 },
+  { name: "2 · ZP-OFDM: el hueco delata", note: "Bob está cerca y recibe. Willie oye a Alice 9 dB por debajo del ruido: la energía y el CP no la ven. El plegado en 1152 muestras encuentra el hueco de guarda. Si bajas el margen de color a 0,2 dB, también la ve el contraste.",
+    a: { mode: "zp", band: "b26", ramp: 0, startOn: false }, w: { band: "b26" }, pos: { A: [0.2, 0.5], B: [0.23, 0.46], W: [0.62, 0.78] }, snrW: -9, on: 12 },
+  { name: "3 · Ruido con clave, espectro plano", note: "Sin ritmo, sin prefijo: solo potencia, 7 dB bajo el ruido en la banda de Willie: sube 0,8 dB, por debajo de su margen de 1,5 dB, así que la energía no la ve (salvo que el fondo suba a la vez). Pero toda su potencia cae en 2–6 kHz y el resto del espectro no sube: el contraste espectral la caza.",
+    a: { mode: "gauss", band: "b26", SF: 64, ramp: 0, startOn: false }, w: { band: "b26" }, pos: { A: [0.2, 0.5], B: [0.74, 0.46], W: [0.5, 0.86] }, snrW: -7, on: 12 },
+  { name: "4 · Mimetismo con rampa lenta", note: "Alice copia el color del fondo en todo el espectro y sube en 120 s. El contraste no ve nada, el detector de cambio no ve un salto y la energía queda bajo el margen. Bob recibe gracias a SF = 256 (unas 190 bit/s).",
+    a: { mode: "gauss", band: "mimic", SF: 256, ramp: 120, startOn: false }, w: { band: "all" }, pos: { A: [0.2, 0.5], B: [0.7, 0.44], W: [0.5, 0.86] }, snrW: -7, on: 12 },
+  { name: "5 · Cobertura: emitir antes de la calibración", note: "Alice ya emite (imitando el fondo) cuando Willie calibra, 3 dB por debajo del ruido: su emisión pasa a ser «el fondo». Prueba a pulsar Emitir para apagarla: el apagado sí lo ve el detector de cambio.",
+    a: { mode: "gauss", band: "mimic", SF: 128, ramp: 0, startOn: true }, w: { band: "all" }, pos: { A: [0.2, 0.5], B: [0.66, 0.44], W: [0.48, 0.84] }, snrW: -3 },
+  { name: "6 · Fuera de la banda vigilada", note: "Willie vigila 2–6 kHz y Alice emite en 8–12 kHz. La energía y el CP no ven nada; el contraste espectral sí, porque la banda de referencia de Willie sube.",
+    a: { mode: "cp", band: "b812", PtxDb: 58, ramp: 0, startOn: false }, w: { band: "b26" }, pos: { A: [0.2, 0.5], B: [0.45, 0.5], W: [0.5, 0.82] }, on: 12 },
+];
+$("presets").innerHTML = PRESETS.map((p, i) => `<button type="button" data-p="${i}">${p.name}</button>`).join("");
+$("presets").addEventListener("click", e => {
+  const b = e.target.closest("button[data-p]"); if (!b) return;
+  const p = PRESETS[+b.dataset.p];
+  Object.assign(E.acfg, p.a, { on: false }); Object.assign(E.wcfg, p.w);
+  for (const k in p.pos) E.pos[k] = p.pos[k].slice();
+  Object.assign(E.scene, { side: 2000, k: 2, varDb: 0.5, colorDb: 0.3 });
+  Object.assign(E.wcfg, { W: 5, pfa: 1e-4, mE: 1.5, mC: 0.5, mS: 0.5, rule: "hyst" });
+  for (const k in DET) E.wcfg.en[k] = true;
+  if (p.snrW !== undefined) {
+    const bW = BANDS_W[E.wcfg.band];
+    E.acfg.PtxDb = Math.round(p.snrW + db(noiseIn(bW.f1, bW.f2) / E.fracW()) + 10 * E.scene.k * Math.log10(E.dist("A", "W")));
+  }
+  script = p.on ? [{ t: p.on, on: true }] : [];
+  restart(true); syncUI();
+  const n = $("presetNote"); n.style.display = "block"; n.textContent = p.note;
+});
+
+// ---------- instrumentos (graficas de tira) ----------
+const stripHTML = s => `<div class="strip" id="st_${s.id}"><div class="hd"><b>${s.name}</b><span id="pl_${s.id}"></span></div><div class="meta" id="mt_${s.id}"></div><canvas id="cv_${s.id}"></canvas></div>`;
+$("stripsB").innerHTML = [{ id: "sigB", name: "S/R recibida en Bob" }, { id: "bob", name: "Tasa de error" }].map(stripHTML).join("");
+$("stripsW").innerHTML = [{ id: "sigW", name: "S/R de Alice en la banda vigilada" }].concat(Object.keys(DET).map(k => ({ id: k, name: DET[k] }))).map(stripHTML).join("");
+function stripMeta() {
+  for (const k in DET) $("st_" + k).classList.toggle("off", !E.wcfg.en[k]);
+}
+function sizeCanvas(cv) {
+  const r = window.devicePixelRatio || 1, w = Math.max(50, Math.round(cv.clientWidth * r)), h = Math.max(20, Math.round(cv.clientHeight * r));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const ctx = cv.getContext("2d"); ctx.setTransform(1, 0, 0, 1, 0, 0); return { ctx, w, h, r };
+}
+function stripFrame(cv, ymin, ymax) {
+  const { ctx, w, h, r } = sizeCanvas(cv);
+  ctx.clearRect(0, 0, w, h);
+  const X = (i) => (i + NH - hist.length) / (NH - 1) * (w - 1);
+  const Y = (v) => h - 5 * r - (Math.min(ymax, Math.max(ymin, v)) - ymin) / (ymax - ymin) * (h - 9 * r);
+  // Alice emitiendo: banda abajo
+  ctx.fillStyle = alpha(C.alice, 0.85);
+  for (let i = 0; i < hist.length; i++) if (hist[i].on) ctx.fillRect(X(i), h - 3 * r, Math.ceil(w / NH) + 1, 3 * r);
+  return { ctx, w, h, r, X, Y };
+}
+function line(ctx, pts, color, r, dash) {
+  ctx.strokeStyle = color; ctx.lineWidth = 1.6 * r; ctx.setLineDash(dash ? [4 * r, 3 * r] : []); ctx.lineJoin = "round";
+  ctx.beginPath(); let pen = false;
+  for (const [x, y] of pts) { if (y === null) { pen = false; continue; } if (!pen) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y); }
+  ctx.stroke(); ctx.setLineDash([]);
+}
+function hline(ctx, y, w, color, r) { ctx.strokeStyle = color; ctx.lineWidth = r; ctx.setLineDash([4 * r, 3 * r]); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); ctx.setLineDash([]); }
+function label(ctx, txt, x, y, color, r, align) { ctx.fillStyle = color; ctx.font = `${11 * r}px ${getComputedStyle(document.body).fontFamily}`; ctx.textAlign = align || "left"; ctx.fillText(txt, x, y); }
+
+function drawStrips() {
+  if (REAL) drawRealB();
+  // S/R en Bob
+  if (!REAL) {
+    const f = stripFrame($("cv_sigB"), -30, 30), { ctx, w, r, X, Y } = f;
+    hline(ctx, Y(0), w, C.line, r);
+    hline(ctx, Y(db(an.req)), w, alpha(C.bob, 0.7), r);
+    line(ctx, hist.map((h, i) => [X(i), h.snrB > 0 ? Y(db(h.snrB)) : null]), C.bob, r);
+    label(ctx, "0 dB", 2 * r, Y(0) - 3 * r, C.muted, r);
+    const L = lastRec;
+    $("mt_sigB").innerHTML = L ? `<span style="color:var(--bob)">${fdb(L.snrB)}</span><span>necesita ${fmt(db(an.req))} dB (raya verde)</span><span>escala ±30 dB</span>` : "";
+  }
+  // S/R en Willie
+  if (REAL) drawRealW();
+  else {
+    const f = stripFrame($("cv_sigW"), -30, 30), { ctx, w, r, X, Y } = f;
+    hline(ctx, Y(0), w, C.line, r);
+    if (an.sReq > 0) hline(ctx, Y(db(an.sReq)), w, alpha(C.willie, 0.7), r);
+    line(ctx, hist.map((h, i) => [X(i), h.snrW > 0 ? Y(db(h.snrW)) : null]), C.willie, r);
+    label(ctx, "0 dB", 2 * r, Y(0) - 3 * r, C.muted, r);
+    const L = lastRec;
+    $("mt_sigW").innerHTML = L ? `<span style="color:var(--willie)">${fdb(L.snrW)}</span><span>la energía detecta desde ${fmt(db(an.sReq))} dB (raya roja)</span><span>fondo ${L.rho >= 1 ? "+" : ""}${fmt(db(L.rho))} dB, grave ${L.col >= 1 ? "+" : ""}${fmt(db(L.col))} dB</span>` : "";
+  }
+  // BER
+  if (!REAL) {
+    const f = stripFrame($("cv_bob"), -4, 0), { ctx, w, r, X, Y } = f;
+    hline(ctx, Y(-2), w, C.line, r);
+    line(ctx, hist.map((h, i) => [X(i), isFinite(h.ber) ? Y(Math.log10(Math.max(h.ber, 1e-4))) : null]), C.bob, r);
+    label(ctx, "1", 2 * r, 11 * r, C.muted, r); label(ctx, "1 %", 2 * r, Y(-2) - 3 * r, C.muted, r); label(ctx, "1e−4", 2 * r, Y(-4) - 4 * r, C.muted, r);
+    const L = lastRec;
+    if (L) {
+      const ok = L.bob.ber < 1e-2;
+      $("pl_bob").innerHTML = isFinite(L.bob.ber) ? `<span class="pill ${ok ? "ok" : "neutral"}">${ok ? "Recibe" : "No recibe"}</span>` : `<span class="pill neutral">Sin señal</span>`;
+      $("mt_bob").innerHTML = `<span>BER ${fexp(L.bob.ber)}</span><span>${fmt(L.bob.rate / 1000, 2)} kbit/s</span>`;
+    }
+  }
+  // detectores
+  for (const k in DET) {
+    const cv = $("cv_" + k), L = lastRec && lastRec.w ? lastRec.w[k] : null;
+    let th = 3.1; for (let i = hist.length - 1; i >= 0; i--) { const d = hist[i].w && hist[i].w[k]; if (d && d.th) { th = d.th; break; } }
+    const ymax = Math.max(8, 2.5 * th);
+    const f = stripFrame(cv, -2, ymax), { ctx, w, h, r, X, Y } = f;
+    ctx.fillStyle = alpha(C.willie, 0.16);
+    for (let i = 0; i < hist.length; i++) { const d = hist[i].w && hist[i].w[k]; if (d && d.alarm) ctx.fillRect(X(i), 0, Math.ceil(w / NH) + 1, h - 4 * r); }
+    hline(ctx, Y(th), w, C.willie, r); hline(ctx, Y(0), w, C.line, r);
+    line(ctx, hist.map((hh, i) => { const d = hh.w && hh.w[k]; return [X(i), d && d.z !== undefined ? Y(d.z) : null]; }), C.ink, r);
+    label(ctx, "umbral", w - 2 * r, Y(th) - 3 * r, C.willie, r, "right");
+    const sc = REAL ? RS[k] : E.score[k];
+    let pill;
+    if (!E.wcfg.en[k]) pill = `<span class="pill neutral">Apagado</span>`;
+    else if (!L || L.cal) pill = `<span class="pill warn">Calibrando</span>`;
+    else pill = L.alarm ? `<span class="pill bad">ALARMA</span>` : `<span class="pill neutral">Tranquilo</span>`;
+    $("pl_" + k).innerHTML = pill;
+    const zt = L && L.z !== undefined ? `z = ${L.z > 999 ? "≫ 999" : fmt(L.z)} · umbral ${fmt(L.th)}` : "";
+    const ft = REAL ? `alarmas: ${sc.n}` : sc.first !== null ? `detectó ${fmt(sc.first)} s tras encender` : (E.wasOn ? "aún no la ha visto" : "");
+    $("mt_" + k).innerHTML = `<span>${zt}</span><span>${ft}</span>${!REAL && sc.fa ? `<span style="color:var(--warn)">falsas alarmas: ${sc.fa}</span>` : ""}`;
+  }
+}
+
+// ---------- mapa ----------
+const mapCv = $("map");
+let drag = null, pulses = [], lastPulse = 0;
+function mapPx(p, w) { return [p[0] * w, p[1] * w]; }
+function hitNode(ev) {
+  const rc = mapCv.getBoundingClientRect(), x = (ev.clientX - rc.left) / rc.width, y = (ev.clientY - rc.top) / rc.height;
+  let best = null, bd = 1e9;
+  for (const k of ["A", "B", "W"]) { const p = E.pos[k], d = Math.hypot(p[0] - x, p[1] - y); if (d < bd) { bd = d; best = k; } }
+  return { k: bd < 0.07 ? best : null, x, y };
+}
+mapCv.addEventListener("pointerdown", ev => { const h = hitNode(ev); if (h.k) { drag = h.k; mapCv.setPointerCapture(ev.pointerId); mapCv.style.cursor = "grabbing"; ev.preventDefault(); } });
+mapCv.addEventListener("pointermove", ev => {
+  const h = hitNode(ev);
+  if (drag) { E.pos[drag] = [Math.min(0.98, Math.max(0.02, h.x)), Math.min(0.98, Math.max(0.02, h.y))]; an = E.analytic(); }
+  else mapCv.style.cursor = h.k ? "grab" : "default";
+});
+const endDrag = () => { drag = null; mapCv.style.cursor = "default"; };
+mapCv.addEventListener("pointerup", endDrag); mapCv.addEventListener("pointercancel", endDrag);
+// teclado: Tab elige nodo con las teclas 1, 2, 3 y flechas mueven
+let kbNode = "A";
+mapCv.tabIndex = 0;
+mapCv.addEventListener("keydown", ev => {
+  if (ev.key === "1") kbNode = "A"; else if (ev.key === "2") kbNode = "B"; else if (ev.key === "3") kbNode = "W";
+  const st = ev.shiftKey ? 0.05 : 0.01, p = E.pos[kbNode];
+  const mv = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, -st], ArrowDown: [0, st] }[ev.key];
+  if (mv) { E.pos[kbNode] = [Math.min(0.98, Math.max(0.02, p[0] + mv[0])), Math.min(0.98, Math.max(0.02, p[1] + mv[1]))]; an = E.analytic(); ev.preventDefault(); }
+});
+
+function drawMap(now) {
+  const { ctx, w, r } = sizeCanvas(mapCv);
+  ctx.fillStyle = C.map; ctx.fillRect(0, 0, w, w);
+  // reticula
+  const side = E.scene.side, step = side / 8;
+  ctx.strokeStyle = C.grid; ctx.lineWidth = r;
+  for (let i = 1; i < 8; i++) { const p = i / 8 * w; ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, w); ctx.moveTo(0, p); ctx.lineTo(w, p); ctx.stroke(); }
+  label(ctx, `${fdist(step)} por cuadro`, 6 * r, w - 7 * r, C.muted, r);
+  const A = mapPx(E.pos.A, w), B = mapPx(E.pos.B, w), W = mapPx(E.pos.W, w);
+  // anillos analiticos
+  const ring = (rad, color, txt) => {
+    if (!(rad > 0)) return;
+    const R = rad / side * w;
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5 * r; ctx.setLineDash([6 * r, 5 * r]);
+    ctx.beginPath(); ctx.arc(A[0], A[1], R, 0, 2 * Math.PI); ctx.stroke(); ctx.setLineDash([]);
+    if (R < w * 1.4) { const ang = -Math.PI / 4, lx = A[0] + R * Math.cos(ang), ly = A[1] + R * Math.sin(ang); if (lx > 0 && lx < w && ly > 10 && ly < w) label(ctx, txt, lx + 4 * r, ly, color, r); }
+  };
+  ring(an.rc, C.bob, `Bob ${fdist(an.rc)}`);
+  ring(an.rd, C.willie, `Willie ${fdist(an.rd)}`);
+  // pulsos de emision
+  const p = E.alice.p;
+  if (running && p > 0.01 && now - lastPulse > 650) { pulses.push({ t: now, a: p }); lastPulse = now; }
+  pulses = pulses.filter(q => now - q.t < 2600);
+  for (const q of pulses) {
+    const age = (now - q.t) / 2600;
+    ctx.strokeStyle = alpha(C.alice, 0.45 * (1 - age) * Math.sqrt(q.a)); ctx.lineWidth = 2 * r;
+    ctx.beginPath(); ctx.arc(A[0], A[1], 16 * r + age * w * 0.35, 0, 2 * Math.PI); ctx.stroke();
+  }
+  // enlaces
+  const L = lastRec;
+  const link = (P, Q, color, txt) => {
+    ctx.strokeStyle = alpha(color, 0.55); ctx.lineWidth = 1.2 * r; ctx.beginPath(); ctx.moveTo(P[0], P[1]); ctx.lineTo(Q[0], Q[1]); ctx.stroke();
+    const mx = (P[0] + Q[0]) / 2, my = (P[1] + Q[1]) / 2;
+    ctx.font = `${11 * r}px ${getComputedStyle(document.body).fontFamily}`;
+    const tw = ctx.measureText(txt).width;
+    ctx.fillStyle = alpha(C.panel, 0.85); ctx.fillRect(mx - tw / 2 - 4 * r, my - 12 * r, tw + 8 * r, 16 * r);
+    label(ctx, txt, mx, my, color, r, "center");
+  };
+  link(A, B, C.bob, `${fdist(E.dist("A", "B"))}${L ? " · " + fdb(L.snrB) : ""}`);
+  link(A, W, C.willie, `${fdist(E.dist("A", "W"))}${L ? " · " + fdb(L.snrW) : ""}`);
+  // halos
+  const anyAlarm = L && L.w && Object.keys(DET).some(k => L.w[k] && L.w[k].alarm);
+  if (anyAlarm) { const ph = 0.5 + 0.5 * Math.sin(now / 160); ctx.fillStyle = alpha(C.willie, 0.18 + 0.2 * ph); ctx.beginPath(); ctx.arc(W[0], W[1], (24 + 6 * ph) * r, 0, 2 * Math.PI); ctx.fill(); }
+  if (L && L.bob.ber < 1e-2) { ctx.fillStyle = alpha(C.bob, 0.22); ctx.beginPath(); ctx.arc(B[0], B[1], 24 * r, 0, 2 * Math.PI); ctx.fill(); }
+  // nodos
+  const node = (P, color, letter, name) => {
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(P[0], P[1], 13 * r, 0, 2 * Math.PI); ctx.fill();
+    ctx.strokeStyle = C.panel; ctx.lineWidth = 2 * r; ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.font = `600 ${13 * r}px ${getComputedStyle(document.body).fontFamily}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(letter, P[0], P[1] + 0.5 * r); ctx.textBaseline = "alphabetic";
+    label(ctx, name, P[0], P[1] + 27 * r, C.ink, r, "center");
+  };
+  node(A, C.alice, "A", "Alice"); node(B, C.bob, "B", "Bob"); node(W, C.willie, "W", "Willie");
+}
+
+function drawSpec() {
+  const cv = $("spec"), { ctx, w, h, r } = sizeCanvas(cv);
+  ctx.clearRect(0, 0, w, h);
+  const sp = E.willie.spec, n = sp.length, v = [];
+  let mx = -1e9, mn = 1e9;
+  for (let i = 1; i < n; i++) { const d = db(Math.max(sp[i], 1e-30)); v.push(d); if (d > mx) mx = d; if (d < mn) mn = d; }
+  if (!(mx > mn)) return;
+  mn = Math.floor(mn / 5) * 5 - 2; mx = Math.ceil(mx / 5) * 5 + 2;
+  const X = (f) => f / 24000 * w, Y = (d) => h - 14 * r - (d - mn) / (mx - mn) * (h - 20 * r);
+  const bW = BANDS_W[E.wcfg.band], bA = BANDS_A[E.acfg.band];
+  ctx.fillStyle = alpha(C.willie, 0.12); ctx.fillRect(X(bW.f1), 0, X(bW.f2) - X(bW.f1), h - 14 * r);
+  ctx.fillStyle = alpha(C.alice, 0.6); ctx.fillRect(X(bA.f1), h - 12 * r, X(bA.f2) - X(bA.f1), 3 * r);
+  line(ctx, v.map((d, i) => [X((i + 1.5) * 24000 / n), Y(d)]), C.ink, r);
+  for (const f of [0, 5000, 10000, 15000, 20000]) label(ctx, `${f / 1000} kHz`, X(f) + 2 * r, h - 2 * r, C.muted, r);
+  label(ctx, `${fmt(mx - mn, 0)} dB de escala`, w - 2 * r, 11 * r, C.muted, r, "right");
+}
+
+function drawTiles() {
+  const L = lastRec; if (!L) return;
+  const ok = L.bob.ber < 1e-2;
+  $("bobV").textContent = isFinite(L.bob.ber) ? (ok ? "Recibe" : "No recibe") : "Sin señal";
+  $("bobV").style.color = ok ? "var(--bob)" : "";
+  $("bobD").textContent = `S/R ${fdb(L.snrB)} · necesita ${fmt(db(an.req))} dB${isFinite(L.bob.ber) ? " · BER " + fexp(L.bob.ber) : ""}`;
+  const al = L.w ? Object.keys(DET).filter(k => L.w[k] && L.w[k].alarm) : [];
+  const cal = !E.willie.cal.done;
+  $("wilV").textContent = al.length ? "¡Te ha visto!" : cal ? "Calibrando…" : "No te ve";
+  $("wilV").style.color = al.length ? "var(--willie)" : "";
+  $("wilD").textContent = al.length ? al.map(k => DET[k]).join(", ") : `S/R en su banda ${fdb(L.snrW)}`;
+  const firsts = Object.keys(DET).filter(k => E.score[k].first !== null).map(k => [k, E.score[k].first]).sort((a, b) => a[1] - b[1]);
+  const fa = Object.keys(DET).reduce((s, k) => s + E.score[k].fa, 0);
+  $("score").innerHTML = `<span>Bits entregados sin alarma: <b>${delivered.toLocaleString("es-ES")}</b></span>` +
+    (firsts.length ? `<span>Primera detección: <b>${DET[firsts[0][0]]}</b> a los <b>${fmt(firsts[0][1])} s</b></span>` : "") +
+    (fa ? `<span>Falsas alarmas: <b>${fa}</b></span>` : "");
+}
+
+// ---------- audio en vivo ----------
+let actx = null, aNext = 0, silentEl = null;
+// En el movil el audio web solo arranca dentro de un toque, y en iPhone el interruptor de silencio
+// lo calla. Se desbloquea en el primer toque: sesion de audio "playback", un <audio> mudo en bucle
+// (saca al iPhone de la categoria que respeta el silencio) y un bufer vacio reproducido al instante.
+function silentWavUrl() {
+  const n = 800, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) b[o + i] = s.charCodeAt(i); };
+  w(0, "RIFF"); v.setUint32(4, 36 + n, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, "data"); v.setUint32(40, n, true);
+  b.fill(128, 44);
+  return URL.createObjectURL(new Blob([b], { type: "audio/wav" }));
+}
+function unlockAudio() {
+  try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!actx) { try { actx = new AC({ sampleRate: 48000 }); } catch (e) { try { actx = new AC(); } catch (e2) { actx = null; } } }
+  if (!actx) { audioState(); return; }
+  if (actx.state !== "running") actx.resume().then(audioState, audioState);
+  try { const s = actx.createBufferSource(); s.buffer = actx.createBuffer(1, 1, actx.sampleRate); s.connect(actx.destination); s.start(0); } catch (e) {}
+  if (!silentEl) { try { silentEl = new Audio(silentWavUrl()); silentEl.loop = true; silentEl.setAttribute("playsinline", ""); } catch (e) { silentEl = null; } }
+  if (silentEl && silentEl.paused) silentEl.play().catch(() => {});
+  audioState();
+}
+function audioState() {
+  const el = $("audioState"); if (!el) return;
+  const want = !REAL && $("audio").value !== "off";
+  let t = "";
+  if (want && !actx) t = "Este navegador no permite audio aquí";
+  else if (want && actx.state !== "running") t = "Audio bloqueado: toca la pantalla";
+  else if (want && speed !== 1) t = "El audio solo suena a ×1";
+  el.textContent = t; el.style.display = t ? "" : "none";
+}
+function ensureAudio() { if ($("audio").value !== "off") unlockAudio(); audioState(); }
+for (const evn of ["pointerdown", "touchend", "click", "keydown"]) document.addEventListener(evn, () => { if ((REAL || $("audio").value !== "off") && (!actx || actx.state !== "running" || (silentEl && silentEl.paused))) unlockAudio(); }, true);
+function playFrame(y) {
+  if (!actx || $("audio").value === "off" || speed !== 1 || !running) return;
+  const b = actx.createBuffer(1, y.length, FS), d = b.getChannelData(0);
+  for (let i = 0; i < y.length; i++) d[i] = Math.tanh(0.06 * y[i]);
+  const s = actx.createBufferSource(); s.buffer = b; s.connect(actx.destination);
+  const now = actx.currentTime;
+  if (aNext < now + 0.03 || aNext > now + 0.6) aNext = now + 0.08;
+  s.start(aNext); aNext += y.length / FS;
+}
+
+// ---------- bucle ----------
+function stepOnce() {
+  for (const ev of script) if (!ev.done && E.t / FS >= ev.t) { ev.done = true; if (ev.on !== undefined) { E.acfg.on = ev.on; updateEmit(); } }
+  const rec = E.step();
+  hist.push({ t: rec.t, on: rec.on, snrB: rec.snrB, snrW: rec.snrW, ber: rec.bob.ber, w: rec.w });
+  if (hist.length > NH) hist.shift();
+  const alarm = rec.w && Object.keys(DET).some(k => rec.w[k] && rec.w[k].alarm);
+  if (!alarm && rec.bob.ber < 1e-2) delivered += rec.bob.nNew - rec.bob.eNew;
+  lastRec = rec;
+  playFrame($("audio").value === "W" ? rec.yW : rec.yB);
+}
+function tick(now) {
+  if (last === null) last = now;
+  const el = Math.min(0.25, (now - last) / 1000); last = now;
+  let n = 0;
+  if (REAL) { if (realDirty()) { drawStrips(); drawSpec(); drawRealStatus(); } requestAnimationFrame(tick); return; }
+  if (running) {
+    acc += el * speed;
+    while (acc >= DT && n < 2 * speed + 1) { stepOnce(); acc -= DT; n++; }
+    if (acc > 4 * DT) acc = 0; // si el equipo no da abasto, el reloj del juego se ralentiza
+  }
+  if (n) { an = E.analytic(); drawStrips(); drawSpec(); drawTiles(); $("clock").textContent = fmt(E.t / FS) + " s"; }
+  drawMap(now);
+  requestAnimationFrame(tick);
+}
+readColors();
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readColors);
+syncUI();
+requestAnimationFrame(tick);
+
+// ============================================================================
+// Modo real: altavoz (cola de mensajes) y microfono (Bob y Willie sobre lo captado)
+// ============================================================================
+const RS = {}; for (const k in DET) RS[k] = { n: 0, prev: false };
+const Rl = {
+  plan: null, rx: null, asm: null, queue: [], sending: false, txActive: false, txEnd: 0,
+  listening: false, stream: null, src: null, node: null, sink: null,
+  n: 0, acc: new Float32Array(FRAME), accN: 0, rs: null, dirty: false,
+  level: -120, lastPk: null, nextId: Math.floor(Math.random() * 256), sentIds: new Set(), err: "",
+};
+function realDirty() { const d = Rl.dirty; Rl.dirty = false; return d; }
+
+// ---------- plan del enlace ----------
+function rebuildPlan() {
+  const key = $("rKey").value || "TFG", band = $("rBand").value, SF = +$("rSF").value;
+  Rl.plan = new ModemPlan(key, band, SF);
+  Rl.rx = new ModemRx(Rl.plan, onPacket);
+  Rl.asm = new Assembler(onMessage);
+  const p = Rl.plan, bps = p.B / (RM.P / FS);
+  const durMax = (RM.LPRE * 2 + (p.symbolsFor((6 + p.payMax) * 8) + 2) * RM.P) / FS;
+  $("rPlanTxt").textContent = `${p.B} bits por símbolo · ${fmt(bps, 0)} bit/s brutos · hasta ${p.payMax} bytes por paquete (${fmt(durMax)} s)`;
+}
+for (const id of ["rKey", "rBand", "rSF"]) $(id).addEventListener("change", rebuildPlan);
+$("rKey").addEventListener("input", rebuildPlan);
+$("rVol").addEventListener("input", () => { $("rVolO").textContent = Math.round(+$("rVol").value * 100) + " %"; });
+
+// ---------- modo ----------
+function setMode(real) {
+  REAL = real; document.body.classList.toggle("real", real);
+  $("mSim").setAttribute("aria-pressed", !real); $("mReal").setAttribute("aria-pressed", real);
+  hist = []; lastRec = null;
+  if (real) {
+    if (!Rl.plan) rebuildPlan();
+    // en modo real Willie analiza el microfono: banda por defecto la del enlace
+    E.willie.configure(E.wcfg, true); for (const k in RS) RS[k] = { n: 0, prev: false };
+    unlockAudio();
+  } else {
+    stopListen();
+    restart();
+  }
+  syncUI(); drawRealStatus(); Rl.dirty = true;
+}
+$("mSim").addEventListener("click", () => setMode(false));
+$("mReal").addEventListener("click", () => setMode(true));
+
+// ---------- emisor ----------
+function renderQueue() {
+  const q = Rl.queue;
+  if (!q.length) { $("rQueue").innerHTML = `<p class="hint">Cola vacía.</p>`; return; }
+  $("rQueue").innerHTML = "";
+  for (const it of q.slice(-8)) {
+    const d = document.createElement("div"); d.className = "qi " + it.state;
+    const a = document.createElement("span"); a.textContent = it.text;
+    const b = document.createElement("span");
+    const tot = it.pk.length * it.rep;
+    b.textContent = it.state === "sent" ? "enviado" : it.state === "sending" ? `paquete ${Math.min(it.sent + 1, tot)}/${tot}` : `${it.pk.length} paq. × ${it.rep}`;
+    d.append(a, b); $("rQueue").append(d);
+  }
+}
+$("rAdd").addEventListener("click", () => {
+  const text = $("rText").value.trim(); if (!text) return;
+  if (!Rl.plan) rebuildPlan();
+  let pk;
+  try { pk = splitMessage(Rl.plan, text, Rl.nextId); } catch (e) { $("rQueue").innerHTML = `<p class="hint" style="color:var(--warn)"></p>`; $("rQueue").firstChild.textContent = e.message; return; }
+  Rl.sentIds.add(Rl.nextId); Rl.nextId = (Rl.nextId + 1) & 255;
+  Rl.queue.push({ text, pk, rep: +$("rRep").value, sent: 0, state: "pending" });
+  $("rText").value = "";
+  unlockAudio(); renderQueue(); pump();
+});
+$("rClear").addEventListener("click", () => { Rl.queue = Rl.queue.filter(it => it.state === "sending"); renderQueue(); });
+function pump() {
+  if (Rl.sending) return;
+  const it = Rl.queue.find(x => x.state !== "sent");
+  if (!it) { renderQueue(); return; }
+  if (!actx) unlockAudio();
+  if (!actx) { $("rQueue").insertAdjacentHTML("afterbegin", `<p class="hint" style="color:var(--warn)">Este navegador no deja reproducir audio.</p>`); return; }
+  it.state = "sending";
+  const n = it.pk.length, p = it.pk[it.sent % n];          // primero todos los paquetes, luego las repeticiones
+  const vol = +$("rVol").value, buf = actx.createBuffer(1, p.samples.length, FS), d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = p.samples[i] * vol;
+  const s = actx.createBufferSource(); s.buffer = buf; s.connect(actx.destination);
+  const t0 = Math.max(actx.currentTime + 0.05, Rl.txEnd);
+  s.start(t0); Rl.sending = true; Rl.txActive = true; Rl.txEnd = t0 + buf.duration;
+  s.onended = () => {
+    Rl.txActive = false; Rl.sending = false; it.sent++;
+    if (it.sent >= n * it.rep) it.state = "sent";
+    renderQueue(); setTimeout(pump, 350);
+  };
+  renderQueue();
+}
+
+// ---------- receptor ----------
+function onPacket(p) {
+  Rl.lastPk = p;
+  if (p.ok) {
+    const r = Rl.asm.add(p);
+    if (r && r.includes("/")) $("rxInfo").textContent = `mensaje en curso: ${r} paquetes`;
+  }
+  Rl.dirty = true;
+}
+function onMessage(m) {
+  $("rxInfo").textContent = "";
+  const box = $("rxMsgs"); if (box.querySelector("p.hint")) box.innerHTML = "";
+  const d = document.createElement("div"); d.className = "msg";
+  const t = document.createElement("div"); t.className = "tx"; t.textContent = m.text;
+  const mt = document.createElement("div"); mt.className = "mt";
+  const own = Rl.sentIds.has(m.msgId) ? " · eco de este móvil" : "";
+  mt.textContent = `${new Date().toLocaleTimeString("es-ES")} · ${m.nparts} paquete${m.nparts > 1 ? "s" : ""}` + (Rl.lastPk ? ` · calidad ${fmt(Rl.lastPk.quality, 2)} · reloj ${Rl.lastPk.ppm >= 0 ? "+" : ""}${fmt(Rl.lastPk.ppm, 0)} ppm` : "") + own;
+  d.append(t, mt); box.prepend(d);
+}
+const WORKLET = `class Cap extends AudioWorkletProcessor { process(inp) { const c = inp[0] && inp[0][0]; if (c) this.port.postMessage(c.slice(0)); return true; } } registerProcessor("cap", Cap);`;
+async function startListen() {
+  Rl.err = "";
+  unlockAudio();
+  if (!actx) { Rl.err = "Este navegador no permite audio aquí."; drawRealStatus(); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { Rl.err = "Sin acceso al micrófono: la página necesita HTTPS o el navegador no lo permite aquí."; drawRealStatus(); return; }
+  try {
+    Rl.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+  } catch (e) {
+    Rl.err = e && e.name === "NotAllowedError" ? "Permiso de micrófono denegado. Si estás en la app de Claude, abre el enlace en Safari o Chrome y acepta el permiso." : "No se pudo abrir el micrófono: " + (e && e.message || e);
+    drawRealStatus(); return;
+  }
+  if (actx.state !== "running") { try { await actx.resume(); } catch (e) {} }
+  Rl.src = actx.createMediaStreamSource(Rl.stream);
+  Rl.sink = actx.createGain(); Rl.sink.gain.value = 0; Rl.sink.connect(actx.destination);
+  Rl.rs = actx.sampleRate !== FS ? { ratio: actx.sampleRate / FS, pos: 0, prev: 0 } : null;
+  try {
+    const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
+    await actx.audioWorklet.addModule(url);
+    Rl.node = new AudioWorkletNode(actx, "cap");
+    Rl.node.port.onmessage = (e) => feed(e.data);
+  } catch (e) {
+    Rl.node = actx.createScriptProcessor(4096, 1, 1);
+    Rl.node.onaudioprocess = (ev) => feed(ev.inputBuffer.getChannelData(0).slice(0));
+  }
+  Rl.src.connect(Rl.node); Rl.node.connect(Rl.sink);
+  Rl.listening = true; Rl.n = 0; Rl.accN = 0; hist = [];
+  if (!Rl.plan) rebuildPlan(); else Rl.rx = new ModemRx(Rl.plan, onPacket);
+  E.willie.configure(E.wcfg, true); for (const k in RS) RS[k] = { n: 0, prev: false };
+  $("listen").classList.add("on"); $("listen").textContent = "Escuchando · parar";
+  drawRealStatus();
+}
+function stopListen() {
+  if (Rl.node) { try { Rl.node.disconnect(); } catch (e) {} if (Rl.node.port) Rl.node.port.onmessage = null; Rl.node.onaudioprocess = null; }
+  if (Rl.src) try { Rl.src.disconnect(); } catch (e) {}
+  if (Rl.stream) for (const t of Rl.stream.getTracks()) t.stop();
+  Rl.node = Rl.src = Rl.stream = null; Rl.listening = false;
+  $("listen").classList.remove("on"); $("listen").textContent = "Escuchar";
+  drawRealStatus();
+}
+$("listen").addEventListener("click", () => { if (Rl.listening) stopListen(); else startListen(); });
+
+// remuestreo lineal a 48 kHz si el contexto de audio va a otra frecuencia
+function feed(chunk) {
+  let x = chunk;
+  if (Rl.rs) {
+    const R = Rl.rs, out = [];
+    while (R.pos < chunk.length) {
+      const i = Math.floor(R.pos), f = R.pos - i, a = i === 0 ? R.prev : chunk[i - 1], b = chunk[i];
+      // posicion medida con la muestra anterior en -1
+      out.push(a + (b - a) * f); R.pos += R.ratio;
+    }
+    R.pos -= chunk.length; R.prev = chunk[chunk.length - 1];
+    x = Float32Array.from(out);
+  }
+  let o = 0;
+  while (o < x.length) {
+    const m = Math.min(x.length - o, FRAME - Rl.accN);
+    Rl.acc.set(x.subarray(o, o + m), Rl.accN); Rl.accN += m; o += m;
+    if (Rl.accN === FRAME) { processFrame(Rl.acc.slice(0)); Rl.accN = 0; }
+  }
+}
+function processFrame(f) {
+  let e = 0; for (let i = 0; i < f.length; i++) e += f[i] * f[i];
+  Rl.level = 10 * Math.log10(e / f.length + 1e-14);
+  const w = E.willie.process(f, Rl.n, DT);
+  Rl.rx.push(f);
+  Rl.n += FRAME;
+  const W = E.willie, pw = W.cal.done ? db(W.Ein.m / W.cal.Nin) : null;
+  hist.push({ t: Rl.n / FS, on: Rl.txActive, w, lvl: Rl.level, sync: Rl.rx.metric, inpk: Rl.rx.state !== "search", pw });
+  if (hist.length > NH) hist.shift();
+  lastRec = { w, real: true };
+  if (w) for (const k in DET) { const al = !!(w[k] && w[k].alarm); if (al && !RS[k].prev) RS[k].n++; RS[k].prev = al; }
+  Rl.dirty = true;
+}
+
+// ---------- pantalla del modo real ----------
+const realStrips = [{ id: "lvl", name: "Nivel del micrófono" }, { id: "sync", name: "Sincronismo de Bob (preámbulo)" }];
+$("stripsR").innerHTML = realStrips.map(stripHTML).join("");
+function drawRealB() {
+  {
+    const f = stripFrame($("cv_lvl"), -90, 0), { ctx, w, r, X, Y } = f;
+    hline(ctx, Y(-6), w, alpha(C.warn, 0.8), r);
+    line(ctx, hist.map((h, i) => [X(i), isFinite(h.lvl) ? Y(h.lvl) : null]), C.bob, r);
+    label(ctx, "−6 dBFS", 2 * r, Y(-6) + 12 * r, C.warn, r);
+    $("mt_lvl").innerHTML = `<span>${fmt(Rl.level)} dBFS</span><span>${Rl.listening ? (Rl.level > -6 ? "¡satura! baja el volumen del emisor" : Rl.level < -75 ? "muy bajo" : "bien") : "micrófono apagado"}</span>`;
+  }
+  {
+    const lg = (v) => Math.log10(Math.max(1, v));
+    const f = stripFrame($("cv_sync"), 0, 3), { ctx, w, h, r, X, Y } = f;
+    ctx.fillStyle = alpha(C.bob, 0.16);
+    for (let i = 0; i < hist.length; i++) if (hist[i].inpk) ctx.fillRect(X(i), 0, Math.ceil(w / NH) + 1, h - 4 * r);
+    const thr = Rl.rx ? Rl.rx.thr : 30;
+    hline(ctx, Y(lg(thr)), w, C.bob, r);
+    line(ctx, hist.map((hh, i) => [X(i), Y(lg(hh.sync || 1))]), C.ink, r);
+    label(ctx, "umbral", w - 2 * r, Y(lg(thr)) - 3 * r, C.bob, r, "right");
+    const st = Rl.rx ? Rl.rx.stats : { sync: 0, ok: 0, bad: 0, falsas: 0 };
+    $("pl_sync").innerHTML = Rl.rx && Rl.rx.state !== "search" ? `<span class="pill ok">Recibiendo paquete</span>` : `<span class="pill neutral">Buscando</span>`;
+    $("mt_sync").innerHTML = `<span>métrica ${fmt(Rl.rx ? Rl.rx.metric : 0, 0)} (umbral ${thr}, escala log)</span><span>sombreado = dentro de un paquete</span>`;
+  }
+}
+function drawRealW() {
+  const f = stripFrame($("cv_sigW"), -10, 30), { ctx, w, r, X, Y } = f;
+  hline(ctx, Y(0), w, C.line, r);
+  hline(ctx, Y(E.wcfg.mE), w, alpha(C.willie, 0.7), r);
+  line(ctx, hist.map((h, i) => [X(i), h.pw !== null && h.pw !== undefined ? Y(h.pw) : null]), C.willie, r);
+  label(ctx, "0 dB", 2 * r, Y(0) - 3 * r, C.muted, r);
+  const L = hist.length ? hist[hist.length - 1] : null;
+  $("mt_sigW").innerHTML = L && L.pw !== null ? `<span style="color:var(--willie)">${L.pw >= 0 ? "+" : ""}${fmt(L.pw)} dB sobre lo calibrado</span><span>raya roja: margen de energía</span>` : `<span>${Rl.listening ? "calibrando con el micrófono…" : "micrófono apagado"}</span>`;
+}
+function drawRealStatus() {
+  const st = Rl.rx ? Rl.rx.stats : null;
+  if (Rl.err) { $("rxState").textContent = Rl.err; $("rxState").style.color = "var(--warn)"; }
+  else {
+    $("rxState").style.color = "";
+    $("rxState").textContent = Rl.listening ? `Escuchando a ${actx ? actx.sampleRate / 1000 : "?"} kHz${Rl.rs ? " (remuestreado a 48)" : ""} · ${fmt(Rl.level)} dBFS` : "Micrófono apagado";
+  }
+  if (st) {
+    const lp = Rl.lastPk;
+    $("rxStats").innerHTML = `<span>Sincronismos: <b>${st.sync}</b></span><span>Paquetes bien: <b>${st.ok}</b></span><span>CRC mal: <b>${st.bad}</b></span><span>Sin postámbulo: <b>${st.falsas}</b></span>` +
+      (lp && lp.ok ? `<span>Último: calidad <b>${fmt(lp.quality, 2)}</b>, reloj <b>${lp.ppm >= 0 ? "+" : ""}${fmt(lp.ppm, 0)} ppm</b></span>` : "");
+  }
+  $("clock").textContent = REAL ? (Rl.listening ? fmt(Rl.n / FS) + " s" : "—") : $("clock").textContent;
+}
+rebuildPlan();
+
+</script>
+</body>
+</html>
