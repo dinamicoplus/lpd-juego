@@ -1556,15 +1556,19 @@ function silentWavUrl() {
   b.fill(128, 44);
   return URL.createObjectURL(new Blob([b], { type: "audio/wav" }));
 }
+function setAudioSession(t) { try { if (navigator.audioSession && navigator.audioSession.type !== t) navigator.audioSession.type = t; } catch (e) {} }
 function unlockAudio() {
-  try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
+  // "playback" evita que el interruptor de silencio del iPhone calle el audio, pero no deja abrir el
+  // microfono; en el modo real hace falta "play-and-record" (que tampoco respeta el interruptor)
+  setAudioSession(REAL ? "play-and-record" : "playback");
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!actx) { try { actx = new AC({ sampleRate: 48000 }); } catch (e) { try { actx = new AC(); } catch (e2) { actx = null; } } }
   if (!actx) { audioState(); return; }
   if (actx.state !== "running") actx.resume().then(audioState, audioState);
   try { const s = actx.createBufferSource(); s.buffer = actx.createBuffer(1, 1, actx.sampleRate); s.connect(actx.destination); s.start(0); } catch (e) {}
   if (!silentEl) { try { silentEl = new Audio(silentWavUrl()); silentEl.loop = true; silentEl.setAttribute("playsinline", ""); } catch (e) { silentEl = null; } }
-  if (silentEl && silentEl.paused) silentEl.play().catch(() => {});
+  if (silentEl && silentEl.paused && !REAL) silentEl.play().catch(() => {});
+  if (silentEl && REAL && !silentEl.paused) silentEl.pause();
   audioState();
 }
 function audioState() {
@@ -1734,8 +1738,17 @@ async function startListen() {
   unlockAudio();
   if (!actx) { Rl.err = "Este navegador no permite audio aquí."; drawRealStatus(); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { Rl.err = "Sin acceso al micrófono: la página necesita HTTPS o el navegador no lo permite aquí."; drawRealStatus(); return; }
+  const constraints = { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } };
+  setAudioSession("play-and-record");
+  if (silentEl && !silentEl.paused) silentEl.pause();
   try {
-    Rl.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+    try { Rl.stream = await navigator.mediaDevices.getUserMedia(constraints); }
+    catch (e1) {
+      // iPhone: si la sesion de audio sigue en una categoria sin grabacion, probar con "auto"
+      if (e1 && e1.name === "NotAllowedError") throw e1;
+      setAudioSession("auto");
+      Rl.stream = await navigator.mediaDevices.getUserMedia(constraints);
+    }
   } catch (e) {
     Rl.err = e && e.name === "NotAllowedError" ? "Permiso de micrófono denegado. Si estás en la app de Claude, abre el enlace en Safari o Chrome y acepta el permiso." : "No se pudo abrir el micrófono: " + (e && e.message || e);
     drawRealStatus(); return;
